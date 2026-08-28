@@ -1,0 +1,2 @@
+# ThruLine
+AI journaling app.
