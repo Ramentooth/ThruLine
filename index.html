@@ -1,0 +1,2352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
+<title>Throughline</title>
+<meta name="description" content="A private journal that finds the throughline in your days." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Throughline" />
+<meta name="theme-color" content="#14120f" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2314120f'/%3E%3Cpath d='M12 44 Q22 16 32 32 T52 20' stroke='%23d9a441' stroke-width='5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet" />
+<style>
+/* ============================== DESIGN TOKENS ============================== */
+:root{
+  --bg:#14120f; --bg2:#1b1815; --panel:#221e19; --panel2:#2a251e;
+  --line:#332d25; --line2:#413a30;
+  --fg:#ece7dd; --fg2:#c9c2b5; --dim:#948b7c; --faint:#6b6357;
+  --accent:#d9a441; --accent-soft:rgba(217,164,65,.14); --accent-line:rgba(217,164,65,.35);
+  --good:#7fa694; --bad:#c9756a; --info:#7f97a6;
+  --radius:14px; --radius-sm:9px;
+  --ui:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --serif:'Newsreader',Georgia,'Iowan Old Style','Times New Roman',serif;
+  --shadow:0 6px 24px rgba(0,0,0,.35);
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+html[data-theme="light"]{
+  --bg:#f6f2ea; --bg2:#efe9de; --panel:#fffdf8; --panel2:#f3ede2;
+  --line:#e0d8c8; --line2:#cfc5b2;
+  --fg:#241f18; --fg2:#443c31; --dim:#7d7263; --faint:#a19685;
+  --accent:#9a6b12; --accent-soft:rgba(154,107,18,.10); --accent-line:rgba(154,107,18,.28);
+  --good:#4d7a67; --bad:#a8503f; --info:#4a6b7d;
+  --shadow:0 6px 20px rgba(60,45,20,.10);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0;}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--ui);
+  font-size:16px; line-height:1.5; overscroll-behavior-y:none;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea,select{font-family:inherit; font-size:inherit; color:inherit;}
+button{cursor:pointer; border:none; background:none;}
+a{color:var(--accent);}
+::selection{background:var(--accent-soft);}
+
+/* ============================== LAYOUT ============================== */
+#app{max-width:760px; margin:0 auto; padding:0 16px calc(96px + var(--safe-b));}
+header.top{
+  position:sticky; top:0; z-index:20; background:linear-gradient(var(--bg) 72%, transparent);
+  padding:14px 0 10px; display:flex; align-items:center; gap:10px;
+}
+.brand{display:flex; align-items:center; gap:9px; font-weight:600; letter-spacing:-.01em;}
+.brand svg{display:block;}
+.brand .name{font-size:17px;}
+.spacer{flex:1;}
+.chip{
+  font-size:12px; font-weight:500; color:var(--dim); background:var(--panel);
+  border:1px solid var(--line); border-radius:999px; padding:5px 11px; white-space:nowrap;
+}
+.chip.on{color:var(--accent); border-color:var(--accent-line); background:var(--accent-soft);}
+
+.view{display:none; animation:fade .18s ease;}
+.view.active{display:block;}
+@keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+
+nav.tabs{
+  position:fixed; left:0; right:0; bottom:0; z-index:30;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--line); padding:6px 8px calc(6px + var(--safe-b));
+}
+nav.tabs .inner{max-width:760px; margin:0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:4px;}
+nav.tabs button{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:7px 2px 5px; border-radius:11px; color:var(--dim);
+  font-size:10.5px; font-weight:500; letter-spacing:.01em;
+}
+nav.tabs button .ic{font-size:19px; line-height:1;}
+nav.tabs button.active{color:var(--accent); background:var(--accent-soft);}
+
+/* ============================== PRIMITIVES ============================== */
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:14px;}
+.card.flush{padding:0; overflow:hidden;}
+h2.sec{font-size:12px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--dim); margin:24px 0 10px;}
+h3{font-size:15px; font-weight:600; margin:0 0 8px;}
+p.hint{font-size:13px; color:var(--dim); margin:6px 0 0; line-height:1.45;}
+.btn{
+  background:var(--panel2); border:1px solid var(--line2); border-radius:10px;
+  padding:10px 15px; font-size:14px; font-weight:500; color:var(--fg);
+  transition:transform .1s ease, background .15s ease;
+}
+.btn:active{transform:scale(.97);}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#1a1409; font-weight:600;}
+html[data-theme="light"] .btn.primary{color:#fff;}
+.btn.ghost{background:transparent;}
+.btn.sm{padding:7px 11px; font-size:13px; border-radius:9px;}
+.btn.wide{width:100%; justify-content:center;}
+.btn:disabled{opacity:.45; cursor:default;}
+.btn-row{display:flex; gap:8px; flex-wrap:wrap;}
+input[type=text],input[type=password],input[type=search],input[type=number],select,textarea{
+  width:100%; background:var(--bg2); border:1px solid var(--line); border-radius:10px;
+  padding:11px 12px; outline:none; transition:border-color .15s ease;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--accent-line);}
+label.fld{display:block; margin-bottom:12px;}
+label.fld span{display:block; font-size:12.5px; font-weight:500; color:var(--dim); margin-bottom:6px;}
+.tag{
+  display:inline-block; font-size:12px; padding:3px 9px; border-radius:999px;
+  background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-line);
+  margin:0 5px 5px 0; font-weight:500;
+}
+.tag.plain{background:var(--panel2); color:var(--fg2); border-color:var(--line2);}
+.empty{text-align:center; color:var(--dim); padding:36px 18px; font-size:14px; line-height:1.6;}
+.empty .big{font-size:30px; display:block; margin-bottom:10px; opacity:.7;}
+.spin{display:inline-block; width:13px; height:13px; border:2px solid var(--line2); border-top-color:var(--accent); border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px;}
+@keyframes sp{to{transform:rotate(360deg);}}
+
+/* ============================== WRITE VIEW ============================== */
+.datebar{display:flex; align-items:center; gap:8px; margin-bottom:12px;}
+.datebar .d{font-size:20px; font-weight:600; letter-spacing:-.02em;}
+.datebar .sub{font-size:12.5px; color:var(--dim);}
+.navbtn{width:32px; height:32px; border-radius:9px; background:var(--panel); border:1px solid var(--line); color:var(--dim); font-size:15px; display:grid; place-items:center;}
+
+#editor{
+  width:100%; min-height:46vh; background:transparent; border:none; resize:none;
+  font-family:var(--serif); font-size:19px; line-height:1.72; color:var(--fg);
+  padding:4px 0 8px; outline:none; letter-spacing:.002em;
+}
+#editor::placeholder{color:var(--faint); font-style:italic;}
+.editor-wrap{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:12px;}
+.editor-meta{display:flex; align-items:center; gap:12px; font-size:12px; color:var(--faint); border-top:1px solid var(--line); padding-top:10px; margin-top:4px;}
+
+.mic{
+  width:60px; height:60px; border-radius:50%; background:var(--panel2);
+  border:1px solid var(--line2); font-size:25px; display:grid; place-items:center;
+  transition:all .18s ease; flex:0 0 auto;
+}
+.mic.live{background:var(--bad); border-color:var(--bad); color:#fff; animation:pulse 1.5s ease-in-out infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(201,117,106,.5);} 50%{box-shadow:0 0 0 14px rgba(201,117,106,0);}}
+.mic-row{display:flex; align-items:center; gap:14px; margin-bottom:14px;}
+.mic-row .lbl{font-size:13.5px; color:var(--dim); line-height:1.4;}
+
+.scale{display:flex; gap:5px; margin-top:2px;}
+.scale button{
+  flex:1; height:38px; border-radius:8px; background:var(--bg2); border:1px solid var(--line);
+  font-size:12.5px; font-weight:500; color:var(--dim);
+}
+.scale button.on{background:var(--accent); border-color:var(--accent); color:#1a1409; font-weight:700;}
+html[data-theme="light"] .scale button.on{color:#fff;}
+
+/* ============================== AI PANEL ============================== */
+.ai-panel{border:1px solid var(--accent-line); background:linear-gradient(160deg, var(--accent-soft), transparent 60%), var(--panel);}
+.ai-panel h3{color:var(--accent); display:flex; align-items:center; gap:7px;}
+.ai-block{margin:14px 0 0;}
+.ai-block .k{font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin-bottom:5px;}
+.ai-block .v{font-size:14.5px; line-height:1.6; color:var(--fg2);}
+.qlist{list-style:none; padding:0; margin:0;}
+.qlist li{padding:9px 0 9px 20px; position:relative; font-size:14.5px; line-height:1.55; border-bottom:1px solid var(--line);}
+.qlist li:last-child{border-bottom:none;}
+.qlist li:before{content:'—'; position:absolute; left:0; color:var(--accent); opacity:.7;}
+.distortion{background:var(--bg2); border:1px solid var(--line); border-left:3px solid var(--bad); border-radius:var(--radius-sm); padding:11px 13px; margin-bottom:9px;}
+.distortion .nm{font-size:13px; font-weight:600; color:var(--bad); margin-bottom:5px;}
+.distortion .qt{font-size:13.5px; font-style:italic; color:var(--dim); border-left:2px solid var(--line2); padding-left:9px; margin:6px 0;}
+.distortion .rf{font-size:13.5px; color:var(--fg2); line-height:1.55;}
+
+/* ============================== ENTRIES ============================== */
+.heat{display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,1fr); gap:3px; overflow-x:auto; padding:2px 0 6px;}
+.heat i{width:11px; height:11px; border-radius:2.5px; background:var(--bg2); display:block; cursor:pointer;}
+.heat i.has{background:var(--accent); opacity:var(--o,.5);}
+.heat i.today{outline:1.5px solid var(--fg); outline-offset:1px;}
+.entry-row{
+  display:block; width:100%; text-align:left; padding:14px 16px; border-bottom:1px solid var(--line);
+  transition:background .12s ease;
+}
+.entry-row:last-child{border-bottom:none;}
+.entry-row:active{background:var(--panel2);}
+.entry-row .er-top{display:flex; align-items:baseline; gap:9px; margin-bottom:5px;}
+.entry-row .er-date{font-size:13px; font-weight:600; color:var(--fg);}
+.entry-row .er-mood{font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums;}
+.entry-row .er-text{font-family:var(--serif); font-size:14.5px; color:var(--fg2); line-height:1.5;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+.entry-row .er-tags{margin-top:7px;}
+.entry-row .er-tags .tag{font-size:10.5px; padding:2px 7px;}
+
+/* ============================== CHARTS ============================== */
+.chart{width:100%; height:auto; display:block; overflow:visible;}
+.legend{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--dim); margin-top:8px;}
+.legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:0px;}
+.bar-row{display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:13.5px;}
+.bar-row .bl{flex:0 0 34%; color:var(--fg2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.bar-row .bt{flex:1; height:9px; background:var(--bg2); border-radius:5px; overflow:hidden;}
+.bar-row .bf{display:block; height:100%; background:var(--accent); border-radius:5px; min-width:3px;}
+.bar-row .bn{flex:0 0 auto; font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums; min-width:26px; text-align:right;}
+
+.corr{border-bottom:1px solid var(--line); padding:12px 0;}
+.corr:last-child{border-bottom:none;}
+.corr .ct{display:flex; align-items:center; gap:9px; margin-bottom:6px;}
+.corr .cn{font-size:14px; font-weight:500; flex:1;}
+.corr .cd{font-size:14px; font-weight:700; font-variant-numeric:tabular-nums;}
+.corr .cd.up{color:var(--good);} .corr .cd.down{color:var(--bad);}
+.corr .cm{font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums;}
+.corr .cbar{height:5px; background:var(--bg2); border-radius:3px; position:relative; overflow:hidden; margin-top:4px;}
+.corr .cbar .mid{position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--line2);}
+.corr .cbar .fill{position:absolute; top:0; bottom:0; border-radius:3px;}
+
+.seg{display:flex; gap:3px; background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:3px;}
+.seg button{flex:1; padding:7px 4px; border-radius:7px; font-size:12.5px; font-weight:500; color:var(--dim);}
+.seg button.on{background:var(--panel2); color:var(--fg); box-shadow:var(--shadow);}
+
+.report{font-size:15px; line-height:1.68; color:var(--fg2);}
+.report h4{font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin:20px 0 8px;}
+.report h4:first-child{margin-top:0;}
+.report p{margin:0 0 12px;}
+.report ul{margin:0 0 12px; padding-left:20px;}
+.report li{margin-bottom:6px;}
+.report strong{color:var(--fg); font-weight:600;}
+
+/* ============================== MISC ============================== */
+.toast{
+  position:fixed; left:50%; bottom:calc(84px + var(--safe-b)); transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--line2); color:var(--fg);
+  padding:11px 17px; border-radius:11px; font-size:13.5px; z-index:60; box-shadow:var(--shadow);
+  opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease; max-width:88vw; text-align:center;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+.toast.err{border-color:var(--bad); color:var(--bad);}
+.row{display:flex; align-items:center; gap:12px; padding:13px 0; border-bottom:1px solid var(--line);}
+.row:last-child{border-bottom:none;}
+.row .rl{flex:1; min-width:0;}
+.row .rl b{display:block; font-size:14px; font-weight:500;}
+.row .rl small{display:block; font-size:12px; color:var(--dim); margin-top:2px; line-height:1.4;}
+.sw{width:46px; height:27px; border-radius:999px; background:var(--line2); position:relative; flex:0 0 auto; transition:background .2s;}
+.sw:after{content:''; position:absolute; top:3px; left:3px; width:21px; height:21px; border-radius:50%; background:#fff; transition:transform .2s;}
+.sw.on{background:var(--accent);} .sw.on:after{transform:translateX(19px);}
+.stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(88px,1fr)); gap:9px;}
+.stat{background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 10px; text-align:center;}
+.stat b{display:block; font-size:22px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums;}
+.stat small{display:block; font-size:11px; color:var(--dim); margin-top:3px;}
+.danger{color:var(--bad); border-color:var(--bad)!important;}
+details.disc{border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 13px; margin-top:10px; background:var(--bg2);}
+details.disc summary{font-size:12.5px; color:var(--dim); cursor:pointer; font-weight:500;}
+details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 0 0;}
+@media (max-width:400px){ #editor{font-size:18px;} .stat b{font-size:19px;} }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+<header class="top">
+  <div class="brand">
+    <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="14" fill="var(--panel)"/>
+      <path d="M12 44 Q22 16 32 32 T52 20" stroke="var(--accent)" stroke-width="5" fill="none" stroke-linecap="round"/>
+    </svg>
+    <span class="name">Throughline</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="chip" id="streakChip" hidden></span>
+  <span class="chip" id="saveChip">saved</span>
+</header>
+
+<!-- ============================== WRITE ============================== -->
+<section class="view active" id="view-write">
+  <div class="datebar">
+    <button class="navbtn" id="prevDay" title="Previous day">‹</button>
+    <div>
+      <div class="d" id="dayTitle">Today</div>
+      <div class="sub" id="daySub"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="navbtn" id="nextDay" title="Next day">›</button>
+    <button class="btn sm ghost" id="newEntryBtn" title="Add another entry for this day">+ entry</button>
+  </div>
+
+  <div class="mic-row">
+    <button class="mic" id="micBtn" title="Dictate">🎙️</button>
+    <div class="lbl" id="micLbl">Tap to talk. It writes for you — keep going as long as you like.</div>
+  </div>
+
+  <div class="editor-wrap">
+    <textarea id="editor" placeholder="What happened today, and how did it land?" spellcheck="true"></textarea>
+    <div class="editor-meta">
+      <span id="wordCount">0 words</span>
+      <span class="spacer"></span>
+      <button class="btn sm ghost" id="promptBtn">✦ Prompt me</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <label class="fld" style="margin-bottom:14px">
+      <span>Mood — how the day felt</span>
+      <div class="scale" id="moodScale"></div>
+    </label>
+    <label class="fld" style="margin-bottom:0">
+      <span>Energy — what you had in the tank</span>
+      <div class="scale" id="energyScale"></div>
+    </label>
+  </div>
+
+  <div id="habitToday"></div>
+
+  <div class="btn-row" style="margin-bottom:14px">
+    <button class="btn primary wide" id="reflectBtn">✦ Reflect on this entry</button>
+  </div>
+
+  <div id="aiOut"></div>
+
+  <div id="entryNav"></div>
+</section>
+
+<!-- ============================== ENTRIES ============================== -->
+<section class="view" id="view-entries">
+  <h2 class="sec" style="margin-top:6px">The year so far</h2>
+  <div class="card">
+    <div class="heat" id="heatmap"></div>
+    <div class="legend">
+      <span><i style="background:var(--bg2)"></i>no entry</span>
+      <span><i style="background:var(--accent);opacity:.35"></i>low mood</span>
+      <span><i style="background:var(--accent);opacity:1"></i>high mood</span>
+    </div>
+  </div>
+
+  <div class="stat-grid" style="margin-bottom:14px" id="entryStats"></div>
+
+  <input type="search" id="searchBox" placeholder="Search your entries…" style="margin-bottom:10px" />
+  <div id="tagFilter" style="margin-bottom:12px"></div>
+
+  <div class="card flush" id="entryList"></div>
+</section>
+
+<!-- ============================== PATTERNS ============================== -->
+<section class="view" id="view-patterns">
+  <div class="seg" id="rangeSeg" style="margin:6px 0 16px">
+    <button data-r="30" class="on">30 days</button>
+    <button data-r="90">90 days</button>
+    <button data-r="365">1 year</button>
+    <button data-r="0">All</button>
+  </div>
+
+  <div class="stat-grid" style="margin-bottom:14px" id="patternStats"></div>
+
+  <h2 class="sec">Mood &amp; energy</h2>
+  <div class="card" id="moodChartCard"></div>
+
+  <h2 class="sec">What you keep writing about</h2>
+  <div class="card" id="themeCard"></div>
+
+  <h2 class="sec">Rhythms</h2>
+  <div class="card" id="rhythmCard"></div>
+
+  <h2 class="sec">Habits &amp; how you felt</h2>
+  <div class="card" id="habitCorrCard"></div>
+
+  <h2 class="sec">Deep pattern report</h2>
+  <div class="card" id="reportCard"></div>
+</section>
+
+<!-- ============================== SETTINGS ============================== -->
+<section class="view" id="view-settings">
+  <h2 class="sec" style="margin-top:6px">AI</h2>
+  <div class="card">
+    <label class="fld">
+      <span>Provider</span>
+      <select id="setProvider">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openai">OpenAI</option>
+        <option value="ollama">Ollama (local)</option>
+      </select>
+    </label>
+    <label class="fld" id="keyField">
+      <span>API key — stored only in this browser, never sent anywhere but the provider</span>
+      <input type="password" id="setKey" placeholder="sk-…" autocomplete="off" />
+    </label>
+    <label class="fld" id="baseField" hidden>
+      <span>Ollama URL</span>
+      <input type="text" id="setBase" placeholder="http://localhost:11434" />
+    </label>
+    <label class="fld" style="margin-bottom:0">
+      <span>Model</span>
+      <input type="text" id="setModel" placeholder="claude-opus-5" />
+    </label>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn sm" id="testAI">Test connection</button>
+      <span id="testOut" style="font-size:13px; color:var(--dim); align-self:center"></span>
+    </div>
+    <details class="disc">
+      <summary>Is my key safe here?</summary>
+      <p>The key lives in this browser's localStorage and is sent directly to your provider from your device — it never touches a server of mine, and it is kept out of every journal export. Anyone with physical access to an unlocked browser profile could read it, so use a key you can rotate.</p>
+    </details>
+  </div>
+
+  <h2 class="sec">Reflection style</h2>
+  <div class="card">
+    <label class="fld" style="margin-bottom:0">
+      <span>What should the reflection focus on? (added to every analysis)</span>
+      <textarea id="setPersona" rows="3" placeholder="e.g. Be direct with me. I care about faith, discipline, and whether I'm avoiding hard things."></textarea>
+    </label>
+    <div class="row" style="margin-top:6px">
+      <div class="rl"><b>Auto-reflect on save</b><small>Analyze an entry as soon as you stop writing for a while</small></div>
+      <div class="sw" id="swAuto"></div>
+    </div>
+  </div>
+
+  <h2 class="sec">Habit Casino</h2>
+  <div class="card" id="habitCard"></div>
+
+  <h2 class="sec">Sync &amp; backup</h2>
+  <div class="card">
+    <div class="row">
+      <div class="rl"><b>Export journal</b><small id="exportSub">Everything as one JSON file</small></div>
+      <button class="btn sm" id="exportBtn">Export</button>
+    </div>
+    <div class="row">
+      <div class="rl"><b>Export as Markdown</b><small>One readable file, newest first</small></div>
+      <button class="btn sm" id="exportMd">Markdown</button>
+    </div>
+    <div class="row">
+      <div class="rl"><b>Import journal</b><small>Merges by entry id — safe to run twice</small></div>
+      <button class="btn sm" id="importBtn">Import</button>
+    </div>
+    <div class="row" style="border-bottom:none">
+      <div class="rl"><b>Firebase sync</b><small id="fbSub">Off — set up to sync across your devices</small></div>
+      <button class="btn sm" id="fbBtn">Set up</button>
+    </div>
+    <div id="fbPanel" hidden style="margin-top:12px; border-top:1px solid var(--line); padding-top:12px">
+      <label class="fld">
+        <span>Firebase config — paste the object from your Firebase console</span>
+        <textarea id="fbConfig" rows="6" placeholder='{ "apiKey": "…", "authDomain": "…", "projectId": "…", "appId": "…" }'></textarea>
+      </label>
+      <div class="btn-row">
+        <button class="btn sm primary" id="fbConnect">Connect &amp; sign in</button>
+        <button class="btn sm" id="fbSyncNow" hidden>Sync now</button>
+        <button class="btn sm danger" id="fbOff" hidden>Turn off</button>
+      </div>
+      <p class="hint" id="fbStatus"></p>
+    </div>
+  </div>
+
+  <h2 class="sec">Appearance</h2>
+  <div class="card">
+    <div class="row">
+      <div class="rl"><b>Theme</b><small>Dark is easier at night; light reads better in sun</small></div>
+      <div class="seg" style="width:150px">
+        <button data-theme="dark" id="thDark">Dark</button>
+        <button data-theme="light" id="thLight">Light</button>
+      </div>
+    </div>
+    <div class="row" style="border-bottom:none">
+      <div class="rl"><b>Reminder</b><small id="remSub">A nudge to write, while this tab is open</small></div>
+      <div class="sw" id="swRemind"></div>
+    </div>
+  </div>
+
+  <h2 class="sec">Danger zone</h2>
+  <div class="card">
+    <div class="row" style="border-bottom:none">
+      <div class="rl"><b>Erase everything</b><small>Every entry, reflection and setting on this device</small></div>
+      <button class="btn sm danger" id="wipeBtn">Erase</button>
+    </div>
+  </div>
+
+  <p class="hint" style="text-align:center; margin:20px 0 8px">Throughline · <span id="verLbl"></span> · your words stay on your device</p>
+</section>
+
+</div>
+
+<nav class="tabs"><div class="inner">
+  <button data-v="write" class="active"><span class="ic">✎</span>Write</button>
+  <button data-v="entries"><span class="ic">📖</span>Entries</button>
+  <button data-v="patterns"><span class="ic">◈</span>Patterns</button>
+  <button data-v="settings"><span class="ic">⚙</span>Settings</button>
+</div></nav>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="filePick" accept="application/json,.json" hidden />
+
+<script>
+"use strict";
+/* =========================================================================
+   THROUGHLINE — a private journal that looks for the line running through
+   your days. Single file, no build step, no server. Data lives in this
+   browser; the only network calls are (a) your AI provider and (b) Firebase,
+   and both are opt-in and configured by you.
+
+   Layout of this script:
+     DATA MODEL · HELPERS · AI · WRITE · ENTRIES · ANALYTICS · PATTERNS
+     HABITS · SYNC · SETTINGS · INIT
+   ========================================================================= */
+
+const APP_VERSION = 'v1.0';
+const SAVE_KEY   = 'throughline.v1';    // journal — safe to export
+const AI_KEY     = 'throughline.ai';    // credentials — deliberately separate,
+                                        // so an export or a wipe never leaks them
+const HABIT_KEY  = 'throughline.habits.v1';
+const HC_KEY     = 'habitCasino.v1';    // Habit Casino's own save, if same-origin
+
+/* ============================== DATA MODEL ============================== */
+
+function defaultState(){
+  return {
+    v: 1,
+    entries: [],        // { id, date, text, mood, energy, tags[], createdAt, updatedAt, ai }
+    reports: [],        // { id, createdAt, range, model, text }
+    prefs: {
+      theme: 'dark',
+      autoReflect: false,
+      persona: '',
+      remind: false,
+      lastRange: 30,
+    },
+    meta: { createdAt: Date.now(), lastOpen: '' },
+  };
+}
+
+let state = defaultState();
+let habitData = { days: {}, habitNames: [], categories: [], importedAt: 0, source: '' };
+
+function load(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (raw){
+      const s = JSON.parse(raw);
+      // Shallow-merge over defaults so a save written by an older build keeps working.
+      state = Object.assign(defaultState(), s);
+      state.prefs = Object.assign(defaultState().prefs, s.prefs || {});
+      state.meta  = Object.assign(defaultState().meta,  s.meta  || {});
+      if (!Array.isArray(state.entries)) state.entries = [];
+      if (!Array.isArray(state.reports)) state.reports = [];
+      state.entries.forEach(normalizeEntry);
+    }
+  }catch(e){ console.warn('load failed, starting fresh', e); }
+  try{
+    const h = localStorage.getItem(HABIT_KEY);
+    if (h) habitData = Object.assign(habitData, JSON.parse(h));
+  }catch(e){ /* habit data is optional */ }
+}
+
+function normalizeEntry(e){
+  e.id      = e.id || uid();
+  e.date    = e.date || todayStr();
+  e.text    = typeof e.text === 'string' ? e.text : '';
+  e.mood    = Number.isFinite(e.mood)   ? e.mood   : null;
+  e.energy  = Number.isFinite(e.energy) ? e.energy : null;
+  e.tags    = Array.isArray(e.tags) ? e.tags : [];
+  e.createdAt = e.createdAt || Date.now();
+  e.updatedAt = e.updatedAt || e.createdAt;
+  return e;
+}
+
+let saveTimer = null;
+function save(){
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    flagSaved('saved');
+    scheduleCloudPush();
+  }catch(err){
+    flagSaved('storage full', true);
+    console.error(err);
+  }
+}
+function saveSoon(){
+  flagSaved('…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 600);
+}
+function saveHabits(){
+  try{ localStorage.setItem(HABIT_KEY, JSON.stringify(habitData)); }catch(e){ toast('Habit data too large to store', true); }
+}
+
+/* ============================== HELPERS ============================== */
+
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function fmtDate(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function todayStr(off){
+  const d = new Date();
+  if (off) d.setDate(d.getDate() + off);
+  return fmtDate(d);
+}
+function parseDate(s){ const p = String(s).split('-').map(Number); return new Date(p[0], p[1]-1, p[2]); }
+function addDays(s, n){ const d = parseDate(s); d.setDate(d.getDate() + n); return fmtDate(d); }
+function daysBetween(a, b){ return Math.round((parseDate(b) - parseDate(a)) / 86400000); }
+function dowOf(s){ return parseDate(s).getDay(); }
+
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function prettyDate(s){
+  const d = parseDate(s), t = todayStr();
+  if (s === t) return 'Today';
+  if (s === todayStr(-1)) return 'Yesterday';
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return DOW[d.getDay()] + ', ' + MONTHS[d.getMonth()].slice(0,3) + ' ' + d.getDate() + (sameYear ? '' : ' ' + d.getFullYear());
+}
+function longDate(s){
+  const d = parseDate(s);
+  return DOW[d.getDay()] + ' · ' + MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+function words(t){ const m = String(t).trim().match(/\S+/g); return m ? m.length : 0; }
+function mean(a){ return a.length ? a.reduce((x,y)=>x+y,0) / a.length : null; }
+function round1(n){ return Math.round(n * 10) / 10; }
+function fx1(n){ return Number(n).toFixed(1); }
+
+let toastTimer = null;
+function toast(msg, isErr){
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, isErr ? 4200 : 2200);
+}
+function flagSaved(txt, isErr){
+  const c = $('#saveChip');
+  c.textContent = txt;
+  c.classList.toggle('on', !!isErr);
+}
+
+/* Minimal, safe markdown → HTML for AI report text. Everything is escaped
+   first, so only the handful of patterns below can produce tags. */
+function mdToHtml(md){
+  const lines = String(md).split('\n');
+  let out = '', inList = false;
+  const inline = t => esc(t)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  for (let raw of lines){
+    const line = raw.trim();
+    if (/^#{1,6}\s/.test(line)){
+      if (inList){ out += '</ul>'; inList = false; }
+      out += '<h4>' + inline(line.replace(/^#{1,6}\s*/, '')) + '</h4>';
+    } else if (/^[-*•]\s+/.test(line)){
+      if (!inList){ out += '<ul>'; inList = true; }
+      out += '<li>' + inline(line.replace(/^[-*•]\s+/, '')) + '</li>';
+    } else if (!line){
+      if (inList){ out += '</ul>'; inList = false; }
+    } else {
+      if (inList){ out += '</ul>'; inList = false; }
+      out += '<p>' + inline(line) + '</p>';
+    }
+  }
+  if (inList) out += '</ul>';
+  return out;
+}
+
+function download(name, text, mime){
+  const blob = new Blob([text], { type: mime || 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ============================== AI ==============================
+   Credentials live under their own localStorage key so the journal export
+   can never carry them. Requests go straight from this browser to the
+   provider you picked — nothing of mine sits in between. */
+
+const AI_DEFAULTS = {
+  provider: 'anthropic',
+  key: '',
+  base: 'http://localhost:11434',
+  model: 'claude-opus-5',
+};
+const MODEL_DEFAULTS = { anthropic: 'claude-opus-5', openai: 'gpt-4.1', ollama: 'qwen3:8b' };
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+// Server-side refusal fallback: journals go to dark places sometimes, and a
+// classifier declining to read one is a bad experience. If the beta header
+// isn't accepted by the browser preflight we retry once without it.
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+let betaBlocked = false;
+
+function loadAI(){
+  try{ return Object.assign({}, AI_DEFAULTS, JSON.parse(localStorage.getItem(AI_KEY) || '{}')); }
+  catch(e){ return Object.assign({}, AI_DEFAULTS); }
+}
+function saveAI(s){ try{ localStorage.setItem(AI_KEY, JSON.stringify(s)); }catch(e){} }
+function aiReady(){
+  const s = loadAI();
+  return s.provider === 'ollama' ? !!s.base : !!s.key;
+}
+
+function safeJSON(text){
+  if (!text) return null;
+  const tries = [text];
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) tries.push(fence[1]);
+  const braces = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  if (braces) tries.push(braces);
+  for (const t of tries){
+    try{ const v = JSON.parse(t.trim()); if (v && typeof v === 'object') return v; }catch(e){}
+  }
+  return null;
+}
+
+async function readError(res){
+  let detail = '';
+  try{
+    const j = await res.json();
+    detail = (j.error && (j.error.message || j.error.type)) || j.message || '';
+  }catch(e){ try{ detail = await res.text(); }catch(e2){} }
+  if (res.status === 401 || res.status === 403) return 'Key rejected (' + res.status + '). Check it in Settings.';
+  if (res.status === 429) return 'Rate limited — wait a moment and try again.';
+  if (res.status >= 500) return 'Provider is having trouble (' + res.status + '). Try again shortly.';
+  return 'Request failed (' + res.status + '). ' + String(detail).slice(0, 220);
+}
+
+function anthropicHeaders(s, withBeta){
+  const h = {
+    'content-type': 'application/json',
+    'x-api-key': s.key,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  };
+  if (withBeta) h['anthropic-beta'] = FALLBACK_BETA;
+  return h;
+}
+
+/* Non-streaming call. Pass `schema` to get structured JSON back. */
+async function callAI(opts){
+  const s = loadAI();
+  const maxTokens = opts.maxTokens || 16000;
+
+  if (s.provider === 'anthropic'){
+    const body = {
+      model: s.model || MODEL_DEFAULTS.anthropic,
+      max_tokens: maxTokens,
+      system: opts.system,
+      messages: opts.messages,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: opts.effort || 'high' },
+    };
+    if (opts.schema) body.output_config.format = { type: 'json_schema', schema: opts.schema };
+
+    const attempt = async (withBeta) => {
+      const b = withBeta ? Object.assign({}, body, { fallbacks: 'default' }) : body;
+      return fetch(ANTHROPIC_URL, { method: 'POST', headers: anthropicHeaders(s, withBeta), body: JSON.stringify(b) });
+    };
+
+    let res;
+    try{
+      res = await attempt(!betaBlocked);
+    }catch(netErr){
+      if (!betaBlocked){ betaBlocked = true; res = await attempt(false).catch(e => { throw netErrorFor(e); }); }
+      else throw netErrorFor(netErr);
+    }
+    if (!res.ok) throw new Error(await readError(res));
+    const data = await res.json();
+    if (data.stop_reason === 'refusal'){
+      throw new Error('The model declined to analyze this entry. Your writing is still saved — you can try again or skip the reflection.');
+    }
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    return opts.schema ? safeJSON(text) : text;
+  }
+
+  if (s.provider === 'openai'){
+    const body = {
+      model: s.model || MODEL_DEFAULTS.openai,
+      max_completion_tokens: maxTokens,
+      messages: [{ role: 'system', content: opts.system }].concat(opts.messages),
+    };
+    if (opts.schema){
+      body.response_format = { type: 'json_schema', json_schema: { name: 'analysis', strict: true, schema: opts.schema } };
+    }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + s.key },
+      body: JSON.stringify(body),
+    }).catch(e => { throw netErrorFor(e); });
+    if (!res.ok) throw new Error(await readError(res));
+    const data = await res.json();
+    const text = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+    return opts.schema ? safeJSON(text) : text;
+  }
+
+  // Ollama
+  const body = {
+    model: s.model || MODEL_DEFAULTS.ollama,
+    stream: false,
+    messages: [{ role: 'system', content: opts.system }].concat(opts.messages),
+  };
+  if (opts.schema) body.format = opts.schema;
+  const res = await fetch(String(s.base).replace(/\/$/, '') + '/api/chat', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }).catch(e => { throw new Error('Could not reach Ollama at ' + s.base + '. Is it running?'); });
+  if (!res.ok) throw new Error(await readError(res));
+  const data = await res.json();
+  const text = data.message ? data.message.content : '';
+  return opts.schema ? safeJSON(text) : text;
+}
+
+function netErrorFor(e){
+  return new Error('Network call blocked or offline. If this page is served over http://, try https:// — browsers block some cross-origin API calls otherwise. (' + (e && e.message ? e.message : 'fetch failed') + ')');
+}
+
+/* Streaming call — used for the long pattern report so it appears as it writes. */
+async function streamAI(opts){
+  const s = loadAI();
+  const onDelta = opts.onDelta || function(){};
+  const maxTokens = opts.maxTokens || 32000;
+  let url, headers, body, kind;
+
+  if (s.provider === 'anthropic'){
+    kind = 'sse'; url = ANTHROPIC_URL; headers = anthropicHeaders(s, !betaBlocked);
+    body = {
+      model: s.model || MODEL_DEFAULTS.anthropic,
+      max_tokens: maxTokens, system: opts.system, messages: opts.messages, stream: true,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: opts.effort || 'high' },
+    };
+    if (!betaBlocked) body.fallbacks = 'default';
+  } else if (s.provider === 'openai'){
+    kind = 'sse'; url = 'https://api.openai.com/v1/chat/completions';
+    headers = { 'content-type': 'application/json', authorization: 'Bearer ' + s.key };
+    body = { model: s.model || MODEL_DEFAULTS.openai, max_completion_tokens: maxTokens, stream: true,
+             messages: [{ role: 'system', content: opts.system }].concat(opts.messages) };
+  } else {
+    kind = 'ndjson'; url = String(s.base).replace(/\/$/, '') + '/api/chat';
+    headers = { 'content-type': 'application/json' };
+    body = { model: s.model || MODEL_DEFAULTS.ollama, stream: true,
+             messages: [{ role: 'system', content: opts.system }].concat(opts.messages) };
+  }
+
+  let res;
+  try{
+    res = await fetch(url, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+  }catch(e){
+    if (s.provider === 'anthropic' && !betaBlocked){
+      betaBlocked = true;
+      delete body.fallbacks;
+      res = await fetch(url, { method: 'POST', headers: anthropicHeaders(s, false), body: JSON.stringify(body) })
+        .catch(e2 => { throw netErrorFor(e2); });
+    } else throw netErrorFor(e);
+  }
+  if (!res.ok) throw new Error(await readError(res));
+  if (!res.body) return callAI(Object.assign({}, opts, { maxTokens: maxTokens }));
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', full = '', refused = false;
+
+  while (true){
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buf += dec.decode(chunk.value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines){
+      const t = line.trim();
+      if (!t) continue;
+      if (kind === 'sse'){
+        if (!t.startsWith('data:')) continue;
+        const payload = t.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        let ev; try{ ev = JSON.parse(payload); }catch(e){ continue; }
+        // Anthropic
+        if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta'){
+          full += ev.delta.text; onDelta(full);
+        }
+        if (ev.type === 'message_delta' && ev.delta && ev.delta.stop_reason === 'refusal') refused = true;
+        if (ev.type === 'error' && ev.error) throw new Error(ev.error.message || 'Stream error');
+        // OpenAI
+        if (ev.choices && ev.choices[0] && ev.choices[0].delta && ev.choices[0].delta.content){
+          full += ev.choices[0].delta.content; onDelta(full);
+        }
+      } else {
+        let ev; try{ ev = JSON.parse(t); }catch(e){ continue; }
+        if (ev.message && ev.message.content){ full += ev.message.content; onDelta(full); }
+      }
+    }
+  }
+  if (refused && !full.trim()){
+    throw new Error('The model declined to write this report. Your entries are untouched.');
+  }
+  return full;
+}
+
+/* ---------- prompts & schemas ---------- */
+
+const SAFETY_NOTE =
+  'This is a private journal. If an entry suggests the writer may be in crisis or at risk of ' +
+  'harming themselves, drop the analytical framing entirely: respond with warmth, say plainly ' +
+  'that this deserves a real person, and mention reaching out to someone they trust or a local ' +
+  'crisis line (in the US, call or text 988). Never diagnose, and never treat distress as a data point.';
+
+function personaLine(){
+  const p = (state.prefs.persona || '').trim();
+  return p ? '\n\nThe writer has asked you to keep this in mind: ' + p : '';
+}
+
+const ANALYSIS_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary:       { type: 'string' },
+    themes:        { type: 'array', items: { type: 'string' } },
+    emotions:      { type: 'array', items: { type: 'string' } },
+    mood_estimate: { type: 'integer' },
+    observation:   { type: 'string' },
+    distortions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { name: { type: 'string' }, quote: { type: 'string' }, reframe: { type: 'string' } },
+        required: ['name', 'quote', 'reframe'],
+        additionalProperties: false,
+      },
+    },
+    questions: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary', 'themes', 'emotions', 'mood_estimate', 'observation', 'distortions', 'questions'],
+  additionalProperties: false,
+};
+
+const ANALYSIS_SYSTEM =
+  'You read one day of someone\'s private journal and reflect it back to them. You are not a ' +
+  'therapist and not a cheerleader — you are a perceptive reader who notices what the writer ' +
+  'half-said.\n\n' +
+  'Return:\n' +
+  '- summary: two sentences, in second person ("You spent most of the day…"). Concrete, no platitudes.\n' +
+  '- themes: 2–5 short lowercase tags naming what this entry is ABOUT (e.g. "work pressure", ' +
+  '"family", "sleep", "avoidance"). Reuse ordinary words so they group across months.\n' +
+  '- emotions: 1–4 emotions actually present in the text, lowercase.\n' +
+  '- mood_estimate: 1–10 for how the day felt, judged from the writing alone.\n' +
+  '- observation: one sentence naming a pattern, tension, or contradiction in this entry — the ' +
+  'thing a friend who listened closely would say back. Skip the obvious.\n' +
+  '- distortions: at most 2, only when genuinely present, drawn from CBT (catastrophizing, ' +
+  'mind reading, all-or-nothing, should statements, personalization, discounting the positive, ' +
+  'overgeneralization). Quote the writer\'s own words verbatim in `quote`, and make `reframe` ' +
+  'a gentler and truer sentence — not a denial of what happened. Empty array is a fine answer.\n' +
+  '- questions: 2–3 questions worth sitting with tomorrow. Open, specific to this entry, never generic.\n\n' +
+  'Be plain-spoken. No therapy-speak, no "it sounds like", no bullet-point summaries of what they ' +
+  'just wrote back at them.\n\n' + SAFETY_NOTE;
+
+/* ============================== WRITE VIEW ============================== */
+
+let curDate = todayStr();
+let curId   = null;      // which entry on that date is open
+let autoTimer = null;
+
+function entriesOn(date){
+  return state.entries.filter(e => e.date === date).sort((a,b) => a.createdAt - b.createdAt);
+}
+function currentEntry(){
+  if (curId){
+    const found = state.entries.find(e => e.id === curId);
+    if (found) return found;
+  }
+  const list = entriesOn(curDate);
+  if (list.length){ curId = list[list.length - 1].id; return list[list.length - 1]; }
+  return null;
+}
+function ensureEntry(){
+  let e = currentEntry();
+  if (!e){
+    e = normalizeEntry({ id: uid(), date: curDate, text: '', createdAt: Date.now() });
+    state.entries.push(e);
+    curId = e.id;
+  }
+  return e;
+}
+/* Tapping "+ entry" and then walking away should not leave a ghost entry
+   behind that the day counter keeps announcing. */
+function pruneEmpty(){
+  const before = state.entries.length;
+  state.entries = state.entries.filter(e =>
+    e.id === curId || e.text.trim() || Number.isFinite(e.mood) || Number.isFinite(e.energy) || e.ai);
+  if (state.entries.length !== before) save();
+}
+
+function openDate(date, id){
+  pruneEmpty();
+  curDate = date;
+  curId = id || null;
+  renderWrite();
+  go('write');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderWrite(){
+  const e = currentEntry();
+  const list = entriesOn(curDate);
+
+  $('#dayTitle').textContent = prettyDate(curDate);
+  const idx = e ? list.findIndex(x => x.id === e.id) + 1 : 0;
+  $('#daySub').textContent = longDate(curDate) + (list.length > 1 ? ' · entry ' + idx + ' of ' + list.length : '');
+  $('#nextDay').disabled = curDate >= todayStr();
+  $('#nextDay').style.opacity = curDate >= todayStr() ? .35 : 1;
+
+  const ed = $('#editor');
+  if (ed.value !== (e ? e.text : '')) ed.value = e ? e.text : '';
+  updateWordCount();
+
+  renderScale('#moodScale', e && e.mood, v => { ensureEntry().mood = v; touch(); renderWrite(); });
+  renderScale('#energyScale', e && e.energy, v => { ensureEntry().energy = v; touch(); renderWrite(); });
+
+  renderHabitToday();
+  renderAIOut(e);
+  renderEntryNav(list, e);
+  renderStreakChip();
+}
+
+function renderScale(sel, val, onPick){
+  const host = $(sel);
+  host.innerHTML = '';
+  for (let i = 1; i <= 10; i++){
+    const b = document.createElement('button');
+    b.textContent = i;
+    if (val === i) b.className = 'on';
+    b.onclick = () => onPick(val === i ? null : i);
+    host.appendChild(b);
+  }
+}
+
+function renderEntryNav(list, e){
+  const host = $('#entryNav');
+  if (list.length < 2){ host.innerHTML = ''; return; }
+  host.innerHTML = '<h2 class="sec">Other entries this day</h2><div class="card flush"></div>';
+  const box = $('.card', host);
+  list.forEach((x, i) => {
+    if (e && x.id === e.id) return;
+    const b = document.createElement('button');
+    b.className = 'entry-row';
+    b.innerHTML = '<div class="er-top"><span class="er-date">Entry ' + (i+1) + '</span>' +
+      '<span class="er-mood">' + new Date(x.createdAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) + '</span></div>' +
+      '<div class="er-text">' + esc(x.text.slice(0, 160) || 'Empty') + '</div>';
+    b.onclick = () => { curId = x.id; renderWrite(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    box.appendChild(b);
+  });
+}
+
+function touch(){
+  const e = currentEntry();
+  if (e) e.updatedAt = Date.now();
+  saveSoon();
+}
+
+function updateWordCount(){
+  const n = words($('#editor').value);
+  $('#wordCount').textContent = n + (n === 1 ? ' word' : ' words');
+}
+
+function renderStreakChip(){
+  const chip = $('#streakChip');
+  const dates = new Set(state.entries.filter(e => e.text.trim()).map(e => e.date));
+  if (!dates.size){ chip.hidden = true; return; }
+  let n = 0, d = todayStr();
+  if (!dates.has(d)) d = todayStr(-1);       // today isn't lost until it's over
+  while (dates.has(d)){ n++; d = addDays(d, -1); }
+  chip.hidden = n < 2;
+  chip.textContent = '🔥 ' + n + ' days';
+  chip.className = 'chip on';
+}
+
+/* ---------- dictation ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null, listening = false, sessionBase = '';
+
+function initDictation(){
+  if (!SR){
+    $('#micBtn').style.display = 'none';
+    $('#micLbl').textContent = 'Voice input is not available in this browser — Safari and Chrome support it.';
+    return;
+  }
+  recog = new SR();
+  recog.continuous = true;
+  recog.interimResults = true;
+  recog.lang = navigator.language || 'en-US';
+
+  recog.onresult = ev => {
+    let finalTxt = '', interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++){
+      const r = ev.results[i];
+      if (r.isFinal) finalTxt += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    if (finalTxt){
+      sessionBase = joinSpoken(sessionBase, finalTxt);
+      const e = ensureEntry();
+      e.text = sessionBase;
+      touch();
+    }
+    $('#editor').value = interim ? joinSpoken(sessionBase, interim) : sessionBase;
+    updateWordCount();
+    $('#editor').scrollTop = $('#editor').scrollHeight;
+  };
+  recog.onerror = ev => {
+    if (ev.error === 'not-allowed') { toast('Microphone permission denied', true); stopDictation(); }
+    else if (ev.error === 'no-speech') { /* normal pause — onend restarts us */ }
+  };
+  recog.onend = () => {
+    if (listening){ try{ recog.start(); }catch(e){ stopDictation(); } }
+  };
+}
+
+function joinSpoken(base, add){
+  const a = base.replace(/\s+$/, ''), b = add.trim();
+  if (!a) return b.charAt(0).toUpperCase() + b.slice(1);
+  const needsSpace = !/[\s]$/.test(a);
+  return a + (needsSpace ? ' ' : '') + b;
+}
+
+function startDictation(){
+  if (!recog) return;
+  sessionBase = $('#editor').value;
+  listening = true;
+  try{ recog.start(); }catch(e){}
+  $('#micBtn').classList.add('live');
+  $('#micBtn').textContent = '⏹';
+  $('#micLbl').textContent = 'Listening. Talk as long as you want — tap to stop.';
+}
+function stopDictation(){
+  listening = false;
+  try{ recog && recog.stop(); }catch(e){}
+  $('#micBtn').classList.remove('live');
+  $('#micBtn').textContent = '🎙️';
+  $('#micLbl').textContent = 'Tap to talk. It writes for you — keep going as long as you like.';
+  const e = ensureEntry();
+  e.text = $('#editor').value;
+  touch(); save();
+}
+
+/* ---------- reflection ---------- */
+
+function renderAIOut(e){
+  const host = $('#aiOut');
+  if (!e || !e.ai){ host.innerHTML = ''; return; }
+  const a = e.ai;
+  const when = new Date(a.analyzedAt).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  let html = '<div class="card ai-panel"><h3>✦ Reflection</h3>';
+  html += '<div class="ai-block"><div class="v">' + esc(a.summary) + '</div></div>';
+
+  if (a.observation){
+    html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
+  }
+  if (a.themes && a.themes.length){
+    html += '<div class="ai-block"><div class="k">Themes</div><div>' +
+      a.themes.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div></div>';
+  }
+  if (a.emotions && a.emotions.length){
+    html += '<div class="ai-block"><div class="k">Emotions · mood read ' + esc(a.moodEstimate) + '/10</div><div>' +
+      a.emotions.map(t => '<span class="tag plain">' + esc(t) + '</span>').join('') + '</div></div>';
+  }
+  if (a.distortions && a.distortions.length){
+    html += '<div class="ai-block"><div class="k">Worth a second look</div>';
+    a.distortions.forEach(d => {
+      html += '<div class="distortion"><div class="nm">' + esc(d.name) + '</div>' +
+        (d.quote ? '<div class="qt">“' + esc(d.quote) + '”</div>' : '') +
+        '<div class="rf">' + esc(d.reframe) + '</div></div>';
+    });
+    html += '</div>';
+  }
+  if (a.questions && a.questions.length){
+    html += '<div class="ai-block"><div class="k">Sit with these</div><ul class="qlist">' +
+      a.questions.map(q => '<li>' + esc(q) + '</li>').join('') + '</ul></div>';
+  }
+  html += '<div class="editor-meta" style="margin-top:16px"><span>' + esc(a.model || '') + ' · ' + when +
+          '</span><span class="spacer"></span><button class="btn sm ghost" id="redoAI">Redo</button></div>';
+  html += '</div>';
+  host.innerHTML = html;
+  const redo = $('#redoAI');
+  if (redo) redo.onclick = () => reflect(true);
+}
+
+async function reflect(force){
+  const e = currentEntry();
+  if (!e || words(e.text) < 15){ toast('Write a little more first — 15 words or so'); return; }
+  if (!aiReady()){ toast('Add an API key in Settings first', true); go('settings'); return; }
+  if (e.ai && !force) return;
+
+  const btn = $('#reflectBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Reading…';
+
+  // Recent context makes the observation about *you*, not just today.
+  const recent = state.entries
+    .filter(x => x.id !== e.id && x.ai && x.text.trim())
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .slice(0, 12)
+    .map(x => x.date + ' (mood ' + (x.mood || x.ai.moodEstimate || '?') + '/10): ' + x.ai.summary +
+              ' [themes: ' + (x.ai.themes || []).join(', ') + ']')
+    .reverse();
+
+  const hab = habitData.days[e.date];
+  const habLine = hab && hab.completed.length
+    ? '\n\nWhat they actually got done that day (from their habit tracker): ' +
+      hab.completed.map(c => c.name).join(', ') + '.'
+    : '';
+
+  const user =
+    (recent.length ? 'For context, their recent entries:\n' + recent.join('\n') + '\n\n---\n\n' : '') +
+    'Today is ' + longDate(e.date) + '.' +
+    (e.mood ? ' They rated the day ' + e.mood + '/10 for mood' + (e.energy ? ' and ' + e.energy + '/10 for energy' : '') + '.' : '') +
+    habLine +
+    '\n\nHere is the entry:\n\n' + e.text;
+
+  try{
+    const out = await callAI({
+      system: ANALYSIS_SYSTEM + personaLine(),
+      messages: [{ role: 'user', content: user }],
+      schema: ANALYSIS_SCHEMA,
+      maxTokens: 16000,
+    });
+    if (!out) throw new Error('Could not read the response as JSON. Try again.');
+    e.ai = {
+      analyzedAt: Date.now(),
+      model: loadAI().model || MODEL_DEFAULTS[loadAI().provider],
+      summary: out.summary || '',
+      themes: (out.themes || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 6),
+      emotions: (out.emotions || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5),
+      moodEstimate: clamp(Number(out.mood_estimate) || 5, 1, 10),
+      observation: out.observation || '',
+      distortions: Array.isArray(out.distortions) ? out.distortions.slice(0, 3) : [],
+      questions: Array.isArray(out.questions) ? out.questions.slice(0, 4) : [],
+    };
+    save();
+    renderWrite();
+    $('#aiOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }catch(err){
+    toast(err.message || 'Reflection failed', true);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = '✦ Reflect on this entry';
+  }
+}
+
+const FALLBACK_PROMPTS = [
+  'What took more out of you today than it should have?',
+  'Where did you surprise yourself?',
+  'What did you avoid, and what was underneath the avoiding?',
+  'Who were you around today, and who were you with them?',
+  'What would make tomorrow feel like a good day — specifically?',
+  'What are you pretending not to know right now?',
+];
+
+async function promptMe(){
+  const ed = $('#editor');
+  const insert = t => {
+    const pre = ed.value.trim();
+    ed.value = (pre ? pre + '\n\n' : '') + t + '\n\n';
+    const e = ensureEntry();
+    e.text = ed.value;
+    touch(); updateWordCount();
+    ed.focus();
+    ed.setSelectionRange(ed.value.length, ed.value.length);
+  };
+  if (!aiReady()){
+    insert(FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)]);
+    return;
+  }
+  const btn = $('#promptBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  try{
+    const recent = state.entries.filter(x => x.ai).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 8)
+      .map(x => x.date + ': ' + x.ai.summary + ' [' + (x.ai.themes || []).join(', ') + ']').reverse();
+    const q = await callAI({
+      system: 'You write a single journaling prompt for one person, based on what they have been ' +
+              'writing lately. One sentence, a question, specific to their life and unresolved ' +
+              'threads — never generic self-help. Output only the question, no quotes, no preamble.' +
+              personaLine(),
+      messages: [{ role: 'user', content: recent.length
+        ? 'Their recent entries:\n' + recent.join('\n') + '\n\nGive me one prompt for today.'
+        : 'They have not written much yet. Give me one good opening prompt for a daily journal.' }],
+      maxTokens: 2000, effort: 'low',
+    });
+    insert(String(q).trim().replace(/^["“]|["”]$/g, ''));
+  }catch(err){
+    insert(FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)]);
+  }finally{
+    btn.disabled = false; btn.textContent = '✦ Prompt me';
+  }
+}
+
+/* ============================== ANALYTICS ============================== */
+
+/* One mood number per day: your own rating wins, the model's read is the
+   fallback, so a day you didn't rate still counts. */
+function moodByDay(){
+  const map = {};
+  state.entries.forEach(e => {
+    const v = Number.isFinite(e.mood) ? e.mood : (e.ai && e.ai.moodEstimate) || null;
+    if (!v) return;
+    (map[e.date] = map[e.date] || []).push(v);
+  });
+  Object.keys(map).forEach(d => { map[d] = round1(mean(map[d])); });
+  return map;
+}
+function energyByDay(){
+  const map = {};
+  state.entries.forEach(e => { if (Number.isFinite(e.energy)) (map[e.date] = map[e.date] || []).push(e.energy); });
+  Object.keys(map).forEach(d => { map[d] = round1(mean(map[d])); });
+  return map;
+}
+function rangeStart(days){
+  if (!days) {
+    const all = state.entries.map(e => e.date).sort();
+    return all.length ? all[0] : todayStr();
+  }
+  return addDays(todayStr(), -(days - 1));
+}
+function entriesInRange(days){
+  const from = rangeStart(days);
+  return state.entries.filter(e => e.date >= from && e.text.trim());
+}
+
+function themeCounts(days){
+  const from = rangeStart(days);
+  const counts = {}, first = {}, last = {};
+  state.entries.forEach(e => {
+    if (e.date < from || !e.ai) return;
+    (e.ai.themes || []).forEach(t => {
+      counts[t] = (counts[t] || 0) + 1;
+      if (!first[t] || e.date < first[t]) first[t] = e.date;
+      if (!last[t]  || e.date > last[t])  last[t]  = e.date;
+    });
+  });
+  return Object.keys(counts).map(t => ({ theme: t, n: counts[t], first: first[t], last: last[t] }))
+    .sort((a,b) => b.n - a.n);
+}
+
+function pearson(xs, ys){
+  const n = xs.length;
+  if (n < 4) return null;
+  const mx = mean(xs), my = mean(ys);
+  let num = 0, dx = 0, dy = 0;
+  for (let i = 0; i < n; i++){
+    const a = xs[i] - mx, b = ys[i] - my;
+    num += a * b; dx += a * a; dy += b * b;
+  }
+  if (!dx || !dy) return null;
+  return num / Math.sqrt(dx * dy);
+}
+
+/* For each habit: average mood on days you did it vs days the tracker was
+   running and you didn't. `lag` of 1 asks whether doing it today shows up in
+   how tomorrow felt. Association only — the UI says so. */
+function habitCorrelations(days, lag){
+  const from = rangeStart(days);
+  const moods = moodByDay();
+  const rows = {};
+  const trackedDates = Object.keys(habitData.days).filter(d => d >= from).sort();
+  if (!trackedDates.length) return { rows: [], overall: null, n: 0 };
+
+  const names = new Set();
+  trackedDates.forEach(d => (habitData.days[d].completed || []).forEach(c => names.add(c.name)));
+
+  names.forEach(name => {
+    const withM = [], withoutM = [];
+    trackedDates.forEach(d => {
+      const target = lag ? addDays(d, lag) : d;
+      const m = moods[target];
+      if (!Number.isFinite(m)) return;
+      const did = (habitData.days[d].completed || []).some(c => c.name === name);
+      (did ? withM : withoutM).push(m);
+    });
+    if (withM.length >= 3 && withoutM.length >= 3){
+      rows[name] = {
+        name: name,
+        withAvg: round1(mean(withM)), withoutAvg: round1(mean(withoutM)),
+        delta: round1(mean(withM) - mean(withoutM)),
+        nWith: withM.length, nWithout: withoutM.length,
+      };
+    }
+  });
+
+  // Overall: does simply doing more correlate with feeling better?
+  const xs = [], ys = [];
+  trackedDates.forEach(d => {
+    const target = lag ? addDays(d, lag) : d;
+    const m = moods[target];
+    if (!Number.isFinite(m)) return;
+    xs.push((habitData.days[d].completed || []).length);
+    ys.push(m);
+  });
+
+  return {
+    rows: Object.values(rows).sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta)),
+    overall: pearson(xs, ys),
+    n: xs.length,
+  };
+}
+
+function dowMoods(days){
+  const from = rangeStart(days), moods = moodByDay();
+  const buckets = [[],[],[],[],[],[],[]];
+  Object.keys(moods).forEach(d => { if (d >= from) buckets[dowOf(d)].push(moods[d]); });
+  return buckets.map((b, i) => ({ dow: DOW[i], avg: b.length ? round1(mean(b)) : null, n: b.length }));
+}
+
+/* ============================== CHARTS ============================== */
+
+function lineChart(series, opts){
+  opts = opts || {};
+  const W = 700, H = 210, PL = 30, PR = 8, PT = 12, PB = 22;
+  const all = series.flatMap(s => s.points);
+  if (all.length < 2) return '<div class="empty">Not enough rated days yet — rate a couple more and this fills in.</div>';
+  const xMin = Math.min.apply(null, all.map(p => p.x)), xMax = Math.max.apply(null, all.map(p => p.x));
+  const yMin = opts.yMin != null ? opts.yMin : 1, yMax = opts.yMax != null ? opts.yMax : 10;
+  const sx = x => PL + (xMax === xMin ? 0.5 : (x - xMin) / (xMax - xMin)) * (W - PL - PR);
+  const sy = y => PT + (1 - (y - yMin) / (yMax - yMin)) * (H - PT - PB);
+
+  let g = '';
+  for (let v = yMin; v <= yMax; v += (yMax - yMin) / 3){
+    const y = sy(v);
+    g += '<line x1="' + PL + '" y1="' + y.toFixed(1) + '" x2="' + W + '" y2="' + y.toFixed(1) +
+         '" stroke="var(--line)" stroke-width="1"/>' +
+         '<text x="' + (PL - 7) + '" y="' + (y + 3.5).toFixed(1) + '" fill="var(--faint)" font-size="10" text-anchor="end">' +
+         Math.round(v) + '</text>';
+  }
+
+  series.forEach(s => {
+    const pts = s.points.slice().sort((a,b) => a.x - b.x);
+    const d = pts.map(p => sx(p.x).toFixed(1) + ',' + sy(p.y).toFixed(1)).join(' ');
+    if (s.fill){
+      g += '<polygon points="' + sx(pts[0].x).toFixed(1) + ',' + sy(yMin).toFixed(1) + ' ' + d + ' ' +
+           sx(pts[pts.length-1].x).toFixed(1) + ',' + sy(yMin).toFixed(1) + '" fill="' + s.color + '" opacity=".10"/>';
+    }
+    g += '<polyline points="' + d + '" fill="none" stroke="' + s.color +
+         '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"' +
+         (s.dash ? ' stroke-dasharray="4 4" opacity=".85"' : '') + '/>';
+    if (pts.length <= 45){
+      pts.forEach(p => { g += '<circle cx="' + sx(p.x).toFixed(1) + '" cy="' + sy(p.y).toFixed(1) +
+        '" r="2.6" fill="var(--panel)" stroke="' + s.color + '" stroke-width="1.6"/>'; });
+    }
+  });
+
+  (opts.xLabels || []).forEach(l => {
+    g += '<text x="' + sx(l.x).toFixed(1) + '" y="' + (H - 5) + '" fill="var(--faint)" font-size="10" text-anchor="middle">' +
+         esc(l.label) + '</text>';
+  });
+
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + '</svg>';
+}
+
+/* ============================== ENTRIES VIEW ============================== */
+
+let searchQ = '', tagQ = '';
+
+function renderEntries(){
+  renderHeatmap();
+  renderEntryStats();
+  renderTagFilter();
+  renderEntryList();
+}
+
+function renderHeatmap(){
+  const host = $('#heatmap');
+  const moods = moodByDay();
+  const today = todayStr();
+  let start = addDays(today, -364);
+  while (dowOf(start) !== 0) start = addDays(start, -1);   // align to a Sunday column
+  const n = daysBetween(start, today) + 1;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++){
+    const d = addDays(start, i);
+    const el = document.createElement('i');
+    const m = moods[d];
+    const has = state.entries.some(e => e.date === d && e.text.trim());
+    if (has){
+      el.className = 'has';
+      el.style.setProperty('--o', m ? (0.25 + (clamp(m,1,10) - 1) / 9 * 0.75).toFixed(2) : '0.45');
+    }
+    if (d === today) el.classList.add('today');
+    el.title = longDate(d) + (m ? ' · mood ' + m + '/10' : has ? ' · entry' : '');
+    el.onclick = () => openDate(d);
+    frag.appendChild(el);
+  }
+  host.innerHTML = '';
+  host.appendChild(frag);
+  host.scrollLeft = host.scrollWidth;
+}
+
+function renderEntryStats(){
+  const written = state.entries.filter(e => e.text.trim());
+  const days = new Set(written.map(e => e.date)).size;
+  const totalWords = written.reduce((s, e) => s + words(e.text), 0);
+  const reflected = written.filter(e => e.ai).length;
+  $('#entryStats').innerHTML =
+    stat(days, 'days written') +
+    stat(written.length, 'entries') +
+    stat(totalWords >= 1000 ? round1(totalWords/1000) + 'k' : totalWords, 'words') +
+    stat(reflected, 'reflections');
+}
+function stat(v, l){ return '<div class="stat"><b>' + esc(v) + '</b><small>' + esc(l) + '</small></div>'; }
+
+function renderTagFilter(){
+  const themes = themeCounts(0).slice(0, 14);
+  const host = $('#tagFilter');
+  if (!themes.length){ host.innerHTML = ''; return; }
+  host.innerHTML = themes.map(t =>
+    '<button class="tag' + (tagQ === t.theme ? '' : ' plain') + '" data-t="' + esc(t.theme) + '">' +
+    esc(t.theme) + ' ' + t.n + '</button>').join('');
+  $$('button[data-t]', host).forEach(b => {
+    b.onclick = () => { tagQ = (tagQ === b.dataset.t) ? '' : b.dataset.t; renderTagFilter(); renderEntryList(); };
+  });
+}
+
+function renderEntryList(){
+  const host = $('#entryList');
+  const q = searchQ.trim().toLowerCase();
+  let list = state.entries.filter(e => e.text.trim());
+  if (q) list = list.filter(e =>
+    e.text.toLowerCase().includes(q) ||
+    (e.ai && (e.ai.summary || '').toLowerCase().includes(q)) ||
+    (e.ai && (e.ai.themes || []).some(t => t.includes(q))));
+  if (tagQ) list = list.filter(e => e.ai && (e.ai.themes || []).includes(tagQ));
+  list.sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+
+  if (!list.length){
+    host.innerHTML = '<div class="empty"><span class="big">' + (q || tagQ ? '🔍' : '✎') + '</span>' +
+      (q || tagQ ? 'Nothing matches that.' : 'No entries yet. The Write tab is where it starts.') + '</div>';
+    return;
+  }
+  host.innerHTML = '';
+  list.slice(0, 250).forEach(e => {
+    const b = document.createElement('button');
+    b.className = 'entry-row';
+    const m = Number.isFinite(e.mood) ? e.mood : (e.ai && e.ai.moodEstimate);
+    b.innerHTML =
+      '<div class="er-top"><span class="er-date">' + esc(prettyDate(e.date)) + '</span>' +
+      (m ? '<span class="er-mood">mood ' + esc(m) + '/10</span>' : '') +
+      (e.ai ? '<span class="er-mood">✦</span>' : '') + '</div>' +
+      '<div class="er-text">' + esc(e.ai ? e.ai.summary : e.text.slice(0, 200)) + '</div>' +
+      (e.ai && e.ai.themes && e.ai.themes.length
+        ? '<div class="er-tags">' + e.ai.themes.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>'
+        : '');
+    b.onclick = () => openDate(e.date, e.id);
+    host.appendChild(b);
+  });
+}
+
+/* ============================== PATTERNS VIEW ============================== */
+
+let corrLag = 0;
+
+function renderPatterns(){
+  const days = state.prefs.lastRange;
+  renderPatternStats(days);
+  renderMoodChart(days);
+  renderThemes(days);
+  renderRhythm(days);
+  renderHabitCorr(days);
+  renderReport();
+}
+
+function renderPatternStats(days){
+  const inR = entriesInRange(days);
+  const moods = moodByDay(), from = rangeStart(days);
+  const vals = Object.keys(moods).filter(d => d >= from).map(d => moods[d]);
+  const dayCount = days || Math.max(1, daysBetween(from, todayStr()) + 1);
+  const pct = Math.round(new Set(inR.map(e => e.date)).size / dayCount * 100);
+  $('#patternStats').innerHTML =
+    stat(vals.length ? round1(mean(vals)) : '—', 'avg mood') +
+    stat(inR.length, 'entries') +
+    stat(clamp(pct, 0, 100) + '%', 'days covered') +
+    stat(themeCounts(days).length, 'themes');
+}
+
+function renderMoodChart(days){
+  const from = rangeStart(days);
+  const moods = moodByDay(), energy = energyByDay();
+  const toPts = map => Object.keys(map).filter(d => d >= from).sort()
+    .map(d => ({ x: daysBetween(from, d), y: map[d], date: d }));
+  const mp = toPts(moods), ep = toPts(energy);
+
+  const span = Math.max(1, daysBetween(from, todayStr()));
+  const xLabels = [
+    { x: 0, label: prettyDate(from).replace('Today','now') },
+    { x: span, label: 'today' },
+  ];
+
+  const series = [{ name: 'Mood', color: 'var(--accent)', points: mp, fill: true }];
+  if (ep.length >= 2) series.push({ name: 'Energy', color: 'var(--info)', points: ep, dash: true });
+
+  let html = lineChart(series, { xLabels: xLabels });
+  html += '<div class="legend"><span><i style="background:var(--accent)"></i>mood</span>' +
+          (ep.length >= 2 ? '<span><i style="background:var(--info)"></i>energy</span>' : '') +
+          '<span class="spacer"></span></div>';
+
+  // Trend: first half vs second half of the window.
+  if (mp.length >= 6){
+    const half = Math.floor(mp.length / 2);
+    const a = mean(mp.slice(0, half).map(p => p.y)), b = mean(mp.slice(half).map(p => p.y));
+    const d = round1(b - a);
+    const word = Math.abs(d) < 0.3 ? 'holding steady' : (d > 0 ? 'trending up' : 'trending down');
+    html += '<p class="hint">Second half of this window vs the first: <strong style="color:' +
+      (Math.abs(d) < 0.3 ? 'var(--dim)' : d > 0 ? 'var(--good)' : 'var(--bad)') + '">' +
+      (d > 0 ? '+' : '') + d + '</strong> — ' + word + '.</p>';
+  }
+  $('#moodChartCard').innerHTML = html;
+}
+
+function renderThemes(days){
+  const themes = themeCounts(days);
+  const host = $('#themeCard');
+  if (!themes.length){
+    host.innerHTML = '<div class="empty"><span class="big">✦</span>Themes appear once you run reflections on a few entries.</div>';
+    return;
+  }
+  const max = themes[0].n;
+  const moods = moodByDay();
+  let html = '';
+  themes.slice(0, 12).forEach(t => {
+    // How did days carrying this theme actually feel?
+    const ds = state.entries.filter(e => e.ai && (e.ai.themes || []).includes(t.theme)).map(e => e.date);
+    const ms = ds.map(d => moods[d]).filter(Number.isFinite);
+    const avg = ms.length >= 2 ? round1(mean(ms)) : null;
+    html += '<div class="bar-row">' +
+      '<span class="bl">' + esc(t.theme) + '</span>' +
+      '<span class="bt"><span class="bf" style="width:' + (t.n / max * 100).toFixed(0) + '%' +
+        (avg != null ? ';background:' + moodColor(avg) : '') + '"></span></span>' +
+      '<span class="bn">' + t.n + (avg != null ? ' · ' + avg : '') + '</span></div>';
+  });
+  html += '<p class="hint">Bar length is how often it comes up; the colour is the average mood of days it shows up on.</p>';
+  host.innerHTML = html;
+}
+function moodColor(m){
+  if (m >= 7) return 'var(--good)';
+  if (m <= 4.5) return 'var(--bad)';
+  return 'var(--accent)';
+}
+
+function renderRhythm(days){
+  const rows = dowMoods(days).filter(r => r.n > 0);
+  const host = $('#rhythmCard');
+  if (rows.length < 3){
+    host.innerHTML = '<div class="empty">A few more rated days and your week takes shape here.</div>';
+    return;
+  }
+  const max = Math.max.apply(null, rows.map(r => r.avg));
+  let html = rows.map(r =>
+    '<div class="bar-row"><span class="bl">' + r.dow + '</span>' +
+    '<span class="bt"><span class="bf" style="width:' + (r.avg / max * 100).toFixed(0) + '%;background:' + moodColor(r.avg) + '"></span></span>' +
+    '<span class="bn">' + r.avg + '</span></div>').join('');
+  const best = rows.slice().sort((a,b) => b.avg - a.avg)[0];
+  const worst = rows.slice().sort((a,b) => a.avg - b.avg)[0];
+  if (best && worst && best.dow !== worst.dow && (best.avg - worst.avg) >= 0.7){
+    html += '<p class="hint"><strong>' + best.dow + 's</strong> land best (' + best.avg + '), <strong>' +
+      worst.dow + 's</strong> hardest (' + worst.avg + ') across ' + rows.reduce((s,r)=>s+r.n,0) + ' rated days.</p>';
+  }
+  host.innerHTML = html;
+}
+
+function renderHabitCorr(days){
+  const host = $('#habitCorrCard');
+  if (!Object.keys(habitData.days).length){
+    host.innerHTML = '<div class="empty"><span class="big">🎰</span>' +
+      'Bring in your Habit Casino data and this compares what you got done against how the day felt.' +
+      '<div style="margin-top:14px"><button class="btn sm" id="goHabitSetup">Connect Habit Casino</button></div></div>';
+    const b = $('#goHabitSetup'); if (b) b.onclick = () => { go('settings'); setTimeout(() => $('#habitCard').scrollIntoView({behavior:'smooth'}), 120); };
+    return;
+  }
+
+  const res = habitCorrelations(days, corrLag);
+  let html = '<div class="seg" style="margin-bottom:14px">' +
+    '<button data-lag="0"' + (corrLag === 0 ? ' class="on"' : '') + '>Same day</button>' +
+    '<button data-lag="1"' + (corrLag === 1 ? ' class="on"' : '') + '>Next day</button></div>';
+
+  if (!res.rows.length){
+    html += '<div class="empty">Not enough overlap yet — this needs at least 3 days both with and ' +
+            'without each habit, on days you also rated your mood.</div>';
+  } else {
+    const maxAbs = Math.max.apply(null, res.rows.map(r => Math.abs(r.delta))) || 1;
+    res.rows.slice(0, 14).forEach(r => {
+      const up = r.delta > 0;
+      const w = Math.abs(r.delta) / maxAbs * 50;
+      html += '<div class="corr">' +
+        '<div class="ct"><span class="cn">' + esc(r.name) + '</span>' +
+        '<span class="cd ' + (up ? 'up' : 'down') + '">' + (up ? '+' : '') + r.delta + '</span></div>' +
+        '<div class="cbar"><div class="mid"></div><div class="fill" style="background:' +
+          (up ? 'var(--good)' : 'var(--bad)') + ';' + (up ? 'left:50%' : 'right:50%') + ';width:' + w.toFixed(1) + '%"></div></div>' +
+        '<div class="cm" style="margin-top:5px">' + fx1(r.withAvg) + '/10 on the ' + r.nWith + ' days you did it · ' +
+          fx1(r.withoutAvg) + '/10 on the ' + r.nWithout + ' you didn\'t</div>' +
+      '</div>';
+    });
+  }
+
+  if (res.overall != null){
+    const r = round1(res.overall * 100) / 100;
+    const strength = Math.abs(r) < 0.2 ? 'essentially none' : Math.abs(r) < 0.4 ? 'weak' : Math.abs(r) < 0.6 ? 'moderate' : 'strong';
+    html += '<p class="hint" style="margin-top:14px">Across ' + res.n + ' days, the link between <em>how much</em> ' +
+      'you completed and how the day felt is <strong>' + strength + '</strong> (r = ' + r + ').</p>';
+  }
+  html += '<details class="disc"><summary>How to read this</summary><p>Each number is the difference in your ' +
+    'average mood between days you did that habit and days the tracker was running but you didn\'t. ' +
+    'It is an association, not proof of cause — a good day makes habits easier just as easily as the reverse. ' +
+    'Small sample sizes swing wildly, so the day counts are shown next to every row. "Next day" asks the ' +
+    'slightly more interesting question: did doing it today show up in how tomorrow felt?</p></details>';
+
+  host.innerHTML = html;
+  $$('button[data-lag]', host).forEach(b => {
+    b.onclick = () => { corrLag = Number(b.dataset.lag); renderHabitCorr(days); };
+  });
+}
+
+/* ---------- the long report ---------- */
+
+const REPORT_SYSTEM =
+  'You are given a compressed record of someone\'s journal — daily summaries, their own mood and ' +
+  'energy ratings, the themes that recurred, and (when present) what they actually got done each ' +
+  'day from their habit tracker. Write the report a close friend with a very good memory would ' +
+  'write after reading all of it.\n\n' +
+  'Use these sections, as markdown "## " headings:\n' +
+  '## The throughline — the one story running under this stretch. Be specific and unafraid.\n' +
+  '## What actually moves your mood — cite the real evidence: dates, habits, themes, the numbers ' +
+  'you were given. Say when something looks like coincidence rather than a pattern.\n' +
+  '## Loops — recurring cycles: the thing they keep resolving to do and don\'t, the situation that ' +
+  'keeps producing the same feeling. Quote their own recurring phrasing where you can.\n' +
+  '## The blind spot — one thing visible across entries that they do not appear to have said out loud.\n' +
+  '## Worth trying — two or three concrete experiments for the next two weeks, each tied to ' +
+  'something specific in the data.\n\n' +
+  'Rules: second person. Concrete over abstract — name dates, habits and themes. Never invent ' +
+  'evidence; if the data is thin, say so plainly. No hedging filler, no "it seems like you might ' +
+  'possibly". Around 600-900 words.\n\n' + SAFETY_NOTE;
+
+function buildReportCorpus(days){
+  const from = rangeStart(days);
+  const moods = moodByDay(), energy = energyByDay();
+  const byDate = {};
+  state.entries.forEach(e => {
+    if (e.date < from || !e.text.trim()) return;
+    (byDate[e.date] = byDate[e.date] || []).push(e);
+  });
+  const dates = Object.keys(byDate).sort();
+  const lines = dates.map(d => {
+    const es = byDate[d];
+    const summary = es.map(e => e.ai ? e.ai.summary : e.text.slice(0, 300)).join(' / ');
+    const themes = Array.from(new Set(es.flatMap(e => (e.ai && e.ai.themes) || [])));
+    const hab = habitData.days[d];
+    return [
+      d + ' (' + DOW[dowOf(d)] + ')',
+      Number.isFinite(moods[d]) ? 'mood ' + moods[d] + '/10' : null,
+      Number.isFinite(energy[d]) ? 'energy ' + energy[d] + '/10' : null,
+      summary,
+      themes.length ? 'themes: ' + themes.join(', ') : null,
+      hab && hab.completed.length ? 'did: ' + hab.completed.map(c => c.name).join(', ') : null,
+    ].filter(Boolean).join(' · ');
+  });
+
+  const corr = habitCorrelations(days, 0);
+  const corrLines = corr.rows.slice(0, 12).map(r =>
+    '- ' + r.name + ': ' + fx1(r.withAvg) + '/10 on ' + r.nWith + ' days done vs ' + fx1(r.withoutAvg) + '/10 on ' +
+    r.nWithout + ' days not done (difference ' + (r.delta > 0 ? '+' : '') + r.delta + ')');
+
+  const themes = themeCounts(days).slice(0, 15).map(t => '- ' + t.theme + ': ' + t.n + ' entries, ' + t.first + ' → ' + t.last);
+  const dows = dowMoods(days).filter(r => r.n).map(r => r.dow + ' ' + r.avg + ' (n=' + r.n + ')');
+
+  return {
+    text:
+      'DAILY RECORD (' + dates.length + ' days written, ' + from + ' to ' + todayStr() + ')\n' +
+      lines.join('\n') +
+      '\n\nRECURRING THEMES\n' + (themes.join('\n') || '(none tagged yet)') +
+      '\n\nMOOD BY WEEKDAY\n' + (dows.join(' · ') || '(not enough data)') +
+      (corrLines.length ? '\n\nHABIT vs MOOD (same day, association only)\n' + corrLines.join('\n') : '') +
+      (corr.overall != null ? '\nOverall correlation between number of habits completed and mood: r=' +
+        (Math.round(corr.overall * 100) / 100) + ' across ' + corr.n + ' days.' : ''),
+    dates: dates.length,
+  };
+}
+
+function renderReport(){
+  const host = $('#reportCard');
+  const latest = state.reports.slice().sort((a,b) => b.createdAt - a.createdAt)[0];
+  let html = '';
+  if (latest){
+    html += '<div class="report">' + mdToHtml(latest.text) + '</div>' +
+      '<div class="editor-meta" style="margin-top:18px"><span>' + esc(latest.model) + ' · ' +
+      new Date(latest.createdAt).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) +
+      ' · ' + esc(latest.range) + '</span></div>';
+  } else {
+    html += '<p class="hint" style="margin:0 0 14px">Reads everything in the selected window at once — ' +
+      'entries, mood, themes and habits — and writes back the story you can\'t see from inside a single day.</p>';
+  }
+  html += '<div class="btn-row" style="margin-top:14px">' +
+    '<button class="btn primary" id="genReport">' + (latest ? 'Write a new report' : '✦ Write my report') + '</button>' +
+    (state.reports.length > 1 ? '<button class="btn ghost sm" id="oldReports">Earlier reports (' + (state.reports.length - 1) + ')</button>' : '') +
+    '</div>';
+  host.innerHTML = html;
+  $('#genReport').onclick = generateReport;
+  const ob = $('#oldReports');
+  if (ob) ob.onclick = () => {
+    const list = state.reports.slice().sort((a,b) => b.createdAt - a.createdAt).slice(1);
+    host.insertAdjacentHTML('beforeend', '<div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">' +
+      list.map(r => '<div style="margin-bottom:20px"><div class="k" style="font-size:11px;color:var(--dim);margin-bottom:8px">' +
+        new Date(r.createdAt).toLocaleDateString() + ' · ' + esc(r.range) + '</div><div class="report">' +
+        mdToHtml(r.text) + '</div></div>').join('') + '</div>');
+    ob.remove();
+  };
+}
+
+async function generateReport(){
+  if (!aiReady()){ toast('Add an API key in Settings first', true); go('settings'); return; }
+  const days = state.prefs.lastRange;
+  const corpus = buildReportCorpus(days);
+  if (corpus.dates < 4){ toast('Write a few more days first — this needs at least 4', true); return; }
+
+  const host = $('#reportCard');
+  host.innerHTML = '<div class="report" id="reportStream"><p class="hint"><span class="spin"></span> ' +
+    'Reading ' + corpus.dates + ' days…</p></div>';
+  const target = $('#reportStream');
+
+  const label = days ? 'last ' + days + ' days' : 'all time';
+  try{
+    const text = await streamAI({
+      system: REPORT_SYSTEM + personaLine(),
+      messages: [{ role: 'user', content: corpus.text +
+        '\n\nWrite the report. Today is ' + longDate(todayStr()) + '.' }],
+      maxTokens: 32000,
+      onDelta: partial => { target.innerHTML = mdToHtml(partial); },
+    });
+    if (!text || !text.trim()) throw new Error('Empty response — try again.');
+    state.reports.push({ id: uid(), createdAt: Date.now(), range: label,
+                         model: loadAI().model || MODEL_DEFAULTS[loadAI().provider], text: text });
+    if (state.reports.length > 24) state.reports = state.reports.slice(-24);
+    save();
+    renderReport();
+    toast('Report saved');
+  }catch(err){
+    toast(err.message || 'Report failed', true);
+    renderReport();
+  }
+}
+
+/* ============================== HABIT CASINO ==============================
+   Habit Casino exports its whole `state` object. What matters here is
+   `history` — the completion log ({ts, kind, name, emoji, category, level,
+   reward}) — plus `eventLog` misses. Everything is reduced to one row per
+   local day so nothing else about that app leaks into this one. */
+
+function parseHabitCasino(obj){
+  if (!obj || typeof obj !== 'object') throw new Error('That file is not JSON.');
+  if (obj.days && obj.habitNames) return obj;                 // already a Throughline bundle
+
+  const hist = Array.isArray(obj.history) ? obj.history : null;
+  if (!hist) throw new Error('No `history` in that file — export from Habit Casino → Settings → Export.');
+
+  const days = {};
+  const day = d => (days[d] = days[d] || { completed: [], missed: [], tokens: 0 });
+
+  hist.forEach(h => {
+    if (!h || !h.ts) return;
+    const d = fmtDate(new Date(h.ts));
+    const row = day(d);
+    row.completed.push({
+      name: String(h.name || 'Unnamed'),
+      category: String(h.category || 'Unsorted'),
+      level: h.level || null,
+      kind: h.kind || 'habit',
+      reward: Number(h.reward) || 0,
+      ts: h.ts,
+    });
+    row.tokens += Number(h.reward) || 0;
+  });
+
+  if (Array.isArray(obj.eventLog)){
+    obj.eventLog.forEach(ev => {
+      if (!ev || ev.eventType !== 'habit_missed') return;
+      const d = ev.scheduledForDate || ev.date;
+      if (!d) return;
+      day(d).missed.push(String(ev.name || 'Unnamed'));
+    });
+  }
+
+  const names = new Set();
+  Object.values(days).forEach(r => r.completed.forEach(c => names.add(c.name)));
+  if (Array.isArray(obj.habits)) obj.habits.forEach(h => { if (h && h.name) names.add(String(h.name)); });
+
+  return {
+    days: days,
+    habitNames: Array.from(names).sort(),
+    categories: Array.isArray(obj.categories) ? obj.categories : [],
+    importedAt: Date.now(),
+    source: 'Habit Casino export',
+  };
+}
+
+function importHabitJSON(text, source){
+  const parsed = parseHabitCasino(JSON.parse(text));
+  parsed.source = source || parsed.source;
+  habitData = parsed;
+  saveHabits();
+  renderHabitCard();
+  renderWrite();
+  if ($('#view-patterns').classList.contains('active')) renderPatterns();
+  const n = Object.keys(habitData.days).length;
+  toast('Imported ' + n + ' tracked days, ' + habitData.habitNames.length + ' habits');
+}
+
+/* If this app is served from the same origin as Habit Casino, its save is
+   sitting right there in localStorage — no export needed. */
+function sameOriginHabitSave(){
+  try{ return localStorage.getItem(HC_KEY); }catch(e){ return null; }
+}
+
+function renderHabitCard(){
+  const host = $('#habitCard');
+  const n = Object.keys(habitData.days).length;
+  const local = sameOriginHabitSave();
+  let html = '';
+
+  if (n){
+    const dates = Object.keys(habitData.days).sort();
+    html += '<div class="stat-grid" style="margin-bottom:14px">' +
+      stat(n, 'tracked days') + stat(habitData.habitNames.length, 'habits') +
+      stat(dates[dates.length - 1] === todayStr() ? 'today' : dates[dates.length - 1].slice(5), 'latest') + '</div>';
+    html += '<p class="hint" style="margin-bottom:12px">' + esc(habitData.source) + ' · imported ' +
+      new Date(habitData.importedAt).toLocaleDateString() + '</p>';
+  } else {
+    html += '<p class="hint" style="margin:0 0 14px">Export your save from Habit Casino (Settings → Export) ' +
+      'and drop it in here. Then the Patterns tab can line up what you got done against how you felt.</p>';
+  }
+
+  html += '<div class="btn-row">' +
+    '<button class="btn sm' + (n ? '' : ' primary') + '" id="habFile">' + (n ? 'Replace from file' : 'Import export file') + '</button>' +
+    '<button class="btn sm" id="habPaste">Paste JSON</button>' +
+    (local ? '<button class="btn sm primary" id="habLocal">Read from this browser</button>' : '') +
+    (n ? '<button class="btn sm danger" id="habClear">Remove</button>' : '') +
+    '</div>';
+  if (local) html += '<p class="hint">Habit Casino is saved on this same domain — Throughline can read it directly, no export file needed.</p>';
+
+  host.innerHTML = html;
+
+  $('#habFile').onclick = () => pickFile(txt => {
+    try{ importHabitJSON(txt, 'Habit Casino export'); }catch(e){ toast(e.message, true); }
+  });
+  $('#habPaste').onclick = () => {
+    const t = prompt('Paste the Habit Casino JSON export:');
+    if (!t) return;
+    try{ importHabitJSON(t, 'pasted export'); }catch(e){ toast(e.message, true); }
+  };
+  const lb = $('#habLocal');
+  if (lb) lb.onclick = () => { try{ importHabitJSON(local, 'same-browser Habit Casino save'); }catch(e){ toast(e.message, true); } };
+  const cb = $('#habClear');
+  if (cb) cb.onclick = () => {
+    if (!confirm('Remove the imported habit data? Your journal is untouched.')) return;
+    habitData = { days: {}, habitNames: [], categories: [], importedAt: 0, source: '' };
+    saveHabits(); renderHabitCard(); renderWrite();
+  };
+}
+
+/* Shown on the Write tab: what the tracker says you did today. */
+function renderHabitToday(){
+  const host = $('#habitToday');
+  const row = habitData.days[curDate];
+  if (!row || !row.completed.length){ host.innerHTML = ''; return; }
+  const byCat = {};
+  row.completed.forEach(c => { (byCat[c.category] = byCat[c.category] || []).push(c.name); });
+  host.innerHTML = '<div class="card"><h3 style="color:var(--dim);font-size:12px;letter-spacing:.08em;text-transform:uppercase">' +
+    'What you got done · ' + row.completed.length + '</h3>' +
+    Object.keys(byCat).map(c =>
+      '<div style="margin-bottom:6px"><span class="tag plain">' + esc(c) + '</span> ' +
+      byCat[c].map(n => '<span style="font-size:13.5px;color:var(--fg2)">' + esc(n) + '</span>').join('<span style="color:var(--faint)"> · </span>')
+      + '</div>').join('') + '</div>';
+}
+
+function pickFile(cb){
+  const inp = $('#filePick');
+  inp.value = '';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => cb(String(r.result));
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+/* ============================== FIREBASE SYNC ==============================
+   Entirely optional and configured by you. Loaded from the CDN only when you
+   switch it on, so the app still opens and works with no network at all. */
+
+const FB_KEY = 'throughline.fb';
+let fb = null;            // { app, auth, db, uid }
+let pushTimer = null;
+
+function loadFB(){ try{ return JSON.parse(localStorage.getItem(FB_KEY) || 'null'); }catch(e){ return null; } }
+function saveFB(v){ try{ v ? localStorage.setItem(FB_KEY, JSON.stringify(v)) : localStorage.removeItem(FB_KEY); }catch(e){} }
+
+async function fbConnect(cfg, interactive){
+  const V = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  const appMod  = await import(V + 'firebase-app.js');
+  const authMod = await import(V + 'firebase-auth.js');
+  const dbMod   = await import(V + 'firebase-firestore.js');
+
+  const app  = appMod.initializeApp(cfg, 'throughline');
+  const auth = authMod.getAuth(app);
+  const db   = dbMod.getFirestore(app);
+
+  let user = auth.currentUser;
+  if (!user){
+    if (!interactive) {
+      user = await new Promise(res => {
+        const un = authMod.onAuthStateChanged(auth, u => { un(); res(u); });
+      });
+    }
+    if (!user){
+      if (!interactive) return null;
+      const cred = await authMod.signInWithPopup(auth, new authMod.GoogleAuthProvider());
+      user = cred.user;
+    }
+  }
+  fb = { app: app, auth: auth, db: db, mod: dbMod, uid: user.uid, email: user.email || '' };
+  return fb;
+}
+
+function fbDoc(){ return fb.mod.doc(fb.db, 'throughline', fb.uid); }
+
+async function cloudPull(){
+  if (!fb) return;
+  const snap = await fb.mod.getDoc(fbDoc());
+  if (!snap.exists()) return;
+  const data = snap.data();
+  if (!data || !data.payload) return;
+  let remote;
+  try{ remote = JSON.parse(data.payload); }catch(e){ return; }
+  mergeRemote(remote);
+}
+
+/* Last-write-wins per entry, never per whole document — writing on your phone
+   and then your laptop must not silently drop one of them. */
+function mergeRemote(remote){
+  if (!remote || !Array.isArray(remote.entries)) return;
+  const mine = new Map(state.entries.map(e => [e.id, e]));
+  let added = 0, updated = 0;
+  remote.entries.forEach(r => {
+    normalizeEntry(r);
+    const m = mine.get(r.id);
+    if (!m){ state.entries.push(r); added++; }
+    else if ((r.updatedAt || 0) > (m.updatedAt || 0)){ Object.assign(m, r); updated++; }
+  });
+  const reportIds = new Set(state.reports.map(r => r.id));
+  (remote.reports || []).forEach(r => { if (!reportIds.has(r.id)) state.reports.push(r); });
+  if (added || updated){
+    save();
+    renderAll();
+    toast('Pulled ' + added + ' new, ' + updated + ' updated');
+  }
+}
+
+async function cloudPush(){
+  if (!fb) return;
+  try{
+    await fb.mod.setDoc(fbDoc(), {
+      payload: JSON.stringify({ v: state.v, entries: state.entries, reports: state.reports }),
+      updatedAt: Date.now(),
+      device: navigator.userAgent.slice(0, 80),
+    });
+    fbStatus('Synced ' + new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }));
+  }catch(e){
+    fbStatus('Sync failed: ' + (e.message || e), true);
+  }
+}
+function scheduleCloudPush(){
+  if (!fb) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(cloudPush, 4000);
+}
+function fbStatus(msg, isErr){
+  const el = $('#fbStatus');
+  if (el){ el.textContent = msg; el.style.color = isErr ? 'var(--bad)' : 'var(--dim)'; }
+  const sub = $('#fbSub');
+  if (sub && fb) sub.textContent = 'On · ' + (fb.email || fb.uid.slice(0, 8));
+}
+
+async function fbAutoConnect(){
+  const cfg = loadFB();
+  if (!cfg) return;
+  try{
+    const ok = await fbConnect(cfg, false);
+    if (!ok){ fbStatus('Signed out — open Settings to sign back in'); return; }
+    $('#fbSyncNow').hidden = false; $('#fbOff').hidden = false;
+    fbStatus('Connected as ' + (fb.email || fb.uid.slice(0, 8)));
+    await cloudPull();
+  }catch(e){
+    fbStatus('Could not connect: ' + (e.message || e), true);
+  }
+}
+
+/* ============================== SETTINGS ============================== */
+
+function renderSettings(){
+  const s = loadAI();
+  $('#setProvider').value = s.provider;
+  $('#setKey').value = s.key;
+  $('#setBase').value = s.base;
+  $('#setModel').value = s.model;
+  $('#keyField').hidden  = s.provider === 'ollama';
+  $('#baseField').hidden = s.provider !== 'ollama';
+  $('#setPersona').value = state.prefs.persona || '';
+  $('#swAuto').classList.toggle('on', !!state.prefs.autoReflect);
+  $('#swRemind').classList.toggle('on', !!state.prefs.remind);
+  $('#thDark').classList.toggle('on', state.prefs.theme !== 'light');
+  $('#thLight').classList.toggle('on', state.prefs.theme === 'light');
+  $('#exportSub').textContent = state.entries.length + ' entries · ' + state.reports.length + ' reports · never includes your API key';
+  $('#verLbl').textContent = APP_VERSION;
+  renderHabitCard();
+}
+
+function wireSettings(){
+  const upd = patch => { const s = Object.assign(loadAI(), patch); saveAI(s); renderSettings(); };
+
+  $('#setProvider').onchange = e => {
+    const p = e.target.value;
+    const cur = loadAI();
+    // Only replace the model if it was still the previous provider's default.
+    const keep = cur.model && cur.model !== MODEL_DEFAULTS[cur.provider];
+    upd({ provider: p, model: keep ? cur.model : MODEL_DEFAULTS[p] });
+  };
+  $('#setKey').onchange   = e => upd({ key: e.target.value.trim() });
+  $('#setBase').onchange  = e => upd({ base: e.target.value.trim() });
+  $('#setModel').onchange = e => upd({ model: e.target.value.trim() });
+
+  $('#testAI').onclick = async () => {
+    const out = $('#testOut');
+    out.textContent = 'testing…'; out.style.color = 'var(--dim)';
+    try{
+      const r = await callAI({
+        system: 'Reply with exactly: ok',
+        messages: [{ role: 'user', content: 'ping' }],
+        maxTokens: 2000, effort: 'low',
+      });
+      out.textContent = '✓ ' + String(r).trim().slice(0, 40);
+      out.style.color = 'var(--good)';
+    }catch(e){
+      out.textContent = '✕ ' + (e.message || 'failed');
+      out.style.color = 'var(--bad)';
+    }
+  };
+
+  $('#setPersona').onchange = e => { state.prefs.persona = e.target.value; save(); };
+  $('#swAuto').onclick   = () => { state.prefs.autoReflect = !state.prefs.autoReflect; save(); renderSettings(); };
+  $('#swRemind').onclick = () => {
+    state.prefs.remind = !state.prefs.remind;
+    if (state.prefs.remind && 'Notification' in window && Notification.permission === 'default'){
+      Notification.requestPermission();
+    }
+    save(); renderSettings();
+  };
+  $('#thDark').onclick  = () => setTheme('dark');
+  $('#thLight').onclick = () => setTheme('light');
+
+  $('#exportBtn').onclick = () => {
+    download('throughline-' + todayStr() + '.json', JSON.stringify(state, null, 2));
+    toast('Exported — keep it somewhere safe');
+  };
+  $('#exportMd').onclick = () => {
+    const list = state.entries.filter(e => e.text.trim()).sort((a,b) => b.date.localeCompare(a.date));
+    const md = list.map(e => {
+      let s = '# ' + longDate(e.date) + '\n\n';
+      if (Number.isFinite(e.mood)) s += '*Mood ' + e.mood + '/10' + (Number.isFinite(e.energy) ? ' · Energy ' + e.energy + '/10' : '') + '*\n\n';
+      s += e.text.trim() + '\n';
+      if (e.ai){
+        s += '\n> **Reflection.** ' + e.ai.summary + '\n';
+        if (e.ai.observation) s += '>\n> ' + e.ai.observation + '\n';
+        if (e.ai.themes && e.ai.themes.length) s += '>\n> Themes: ' + e.ai.themes.join(', ') + '\n';
+        if (e.ai.questions && e.ai.questions.length) s += '>\n' + e.ai.questions.map(q => '> - ' + q).join('\n') + '\n';
+      }
+      return s;
+    }).join('\n---\n\n');
+    download('throughline-' + todayStr() + '.md', '# Throughline\n\n' + md, 'text/markdown');
+  };
+  $('#importBtn').onclick = () => pickFile(txt => {
+    try{
+      const inc = JSON.parse(txt);
+      if (!Array.isArray(inc.entries)) throw new Error('That is not a Throughline export.');
+      mergeRemote(inc);
+      if (inc.prefs && !state.prefs.persona && inc.prefs.persona) state.prefs.persona = inc.prefs.persona;
+      save(); renderAll();
+      toast('Imported ' + inc.entries.length + ' entries');
+    }catch(e){ toast(e.message || 'Import failed', true); }
+  });
+
+  $('#fbBtn').onclick = () => {
+    const p = $('#fbPanel');
+    p.hidden = !p.hidden;
+    if (!p.hidden){
+      const cfg = loadFB();
+      if (cfg) $('#fbConfig').value = JSON.stringify(cfg, null, 2);
+      $('#fbSyncNow').hidden = !fb; $('#fbOff').hidden = !fb;
+    }
+  };
+  $('#fbConnect').onclick = async () => {
+    let cfg;
+    try{
+      const raw = $('#fbConfig').value.trim().replace(/^const\s+\w+\s*=\s*/, '').replace(/;$/, '');
+      cfg = JSON.parse(raw);
+    }catch(e){ fbStatus('That config is not valid JSON — quote the keys.', true); return; }
+    fbStatus('Connecting…');
+    try{
+      await fbConnect(cfg, true);
+      saveFB(cfg);
+      $('#fbSyncNow').hidden = false; $('#fbOff').hidden = false;
+      fbStatus('Connected as ' + (fb.email || fb.uid.slice(0, 8)) + ' — pulling…');
+      await cloudPull();
+      await cloudPush();
+    }catch(e){ fbStatus('Failed: ' + (e.message || e), true); }
+  };
+  $('#fbSyncNow').onclick = async () => { fbStatus('Syncing…'); await cloudPull(); await cloudPush(); };
+  $('#fbOff').onclick = () => {
+    saveFB(null); fb = null;
+    $('#fbSyncNow').hidden = true; $('#fbOff').hidden = true;
+    $('#fbSub').textContent = 'Off — set up to sync across your devices';
+    fbStatus('Sync off. Your entries stay on this device.');
+  };
+
+  $('#wipeBtn').onclick = () => {
+    if (!confirm('Erase every entry and reflection on this device? Export first if you want a copy.')) return;
+    if (!confirm('Really erase? This cannot be undone.')) return;
+    localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem(HABIT_KEY);
+    state = defaultState();
+    habitData = { days: {}, habitNames: [], categories: [], importedAt: 0, source: '' };
+    curId = null; curDate = todayStr();
+    save(); renderAll();
+    toast('Erased. Your API key was left alone.');
+  };
+}
+
+function setTheme(t){
+  state.prefs.theme = t;
+  document.documentElement.dataset.theme = t;
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = t === 'light' ? '#f6f2ea' : '#14120f';
+  save(); renderSettings();
+}
+
+/* ============================== ROUTING & INIT ============================== */
+
+let curView = 'write';
+function go(v){
+  if (curView === 'write' && v !== 'write') pruneEmpty();
+  curView = v;
+  $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+  $$('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  if (v === 'entries')  renderEntries();
+  if (v === 'patterns') renderPatterns();
+  if (v === 'settings') renderSettings();
+}
+function renderAll(){
+  renderWrite();
+  if (curView === 'entries')  renderEntries();
+  if (curView === 'patterns') renderPatterns();
+  if (curView === 'settings') renderSettings();
+}
+
+function wire(){
+  $$('nav.tabs button').forEach(b => { b.onclick = () => go(b.dataset.v); });
+
+  const ed = $('#editor');
+  ed.addEventListener('input', () => {
+    const e = ensureEntry();
+    e.text = ed.value;
+    touch();
+    updateWordCount();
+    if (state.prefs.autoReflect){
+      clearTimeout(autoTimer);
+      autoTimer = setTimeout(() => { if (!e.ai && words(e.text) >= 60) reflect(false); }, 12000);
+    }
+  });
+  ed.addEventListener('blur', save);
+
+  $('#prevDay').onclick = () => { openDate(addDays(curDate, -1)); };
+  $('#nextDay').onclick = () => { if (curDate < todayStr()) openDate(addDays(curDate, 1)); };
+  $('#newEntryBtn').onclick = () => {
+    const e = normalizeEntry({ id: uid(), date: curDate, text: '', createdAt: Date.now() });
+    state.entries.push(e); curId = e.id; save(); renderWrite();
+    $('#editor').focus();
+  };
+  $('#micBtn').onclick = () => { listening ? stopDictation() : startDictation(); };
+  $('#promptBtn').onclick = promptMe;
+  $('#reflectBtn').onclick = () => reflect(true);
+
+  $('#searchBox').addEventListener('input', e => { searchQ = e.target.value; renderEntryList(); });
+
+  $$('#rangeSeg button').forEach(b => {
+    b.onclick = () => {
+      state.prefs.lastRange = Number(b.dataset.r);
+      $$('#rangeSeg button').forEach(x => x.classList.toggle('on', x === b));
+      save(); renderPatterns();
+    };
+  });
+
+  // A tab left open overnight should still be showing the right day.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') { save(); return; }
+    if (state.meta.lastOpen !== todayStr() && curDate === state.meta.lastOpen){
+      state.meta.lastOpen = todayStr();
+      curDate = todayStr(); curId = null;
+      renderWrite();
+    }
+  });
+  window.addEventListener('beforeunload', save);
+
+  // Reminder, honestly scoped: only fires while this tab is alive.
+  setInterval(() => {
+    if (!state.prefs.remind || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const now = new Date();
+    if (now.getHours() !== 21 || now.getMinutes() > 4) return;
+    if (state.meta.lastRemind === todayStr()) return;
+    if (entriesOn(todayStr()).some(e => e.text.trim())) return;
+    state.meta.lastRemind = todayStr(); save();
+    new Notification('Throughline', { body: 'How did today land?' });
+  }, 240000);
+}
+
+function init(){
+  load();
+  document.documentElement.dataset.theme = state.prefs.theme === 'light' ? 'light' : 'dark';
+  if (state.prefs.theme === 'light'){
+    const meta = document.querySelector('meta[name=theme-color]');
+    if (meta) meta.content = '#f6f2ea';
+  }
+  if (!Number.isFinite(state.prefs.lastRange)) state.prefs.lastRange = 30;
+  $$('#rangeSeg button').forEach(b => b.classList.toggle('on', Number(b.dataset.r) === state.prefs.lastRange));
+
+  state.meta.lastOpen = todayStr();
+  curDate = todayStr();
+
+  initDictation();
+  wire();
+  wireSettings();
+  renderWrite();
+  flagSaved('saved');
+  save();
+
+  fbAutoConnect();
+
+  if (!state.entries.length && !aiReady()){
+    setTimeout(() => toast('Add an API key in Settings to turn on reflections'), 1200);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
