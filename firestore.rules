@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// Throughline stores one document per signed-in user, keyed by their uid.
+// Nobody — including other signed-in users — can read or write another
+// person's journal.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /throughline/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
