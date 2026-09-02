@@ -59,6 +59,16 @@ Habit Casino is ever hosted there too, Throughline can read
 browser" button and you never have to export a file. On different domains,
 export from Habit Casino (Settings → Export) and import the JSON here.
 
+## Focus mode
+
+Start typing and the app fades out — header, mood scales, buttons and nav all
+go, the sheet loses its border, and the editor grows to fill the screen. Moving
+the pointer brings it back (a small jitter won't, since hiding the cursor can
+itself emit one); Escape and the "done" chip work too, so touch and
+keyboard-only use are never stuck. It stays off while dictating, so the stop
+button remains reachable, and switching tabs always restores the UI. Toggle it
+in Settings → Reflection style.
+
 ## Turning on the AI
 
 Settings → AI. Three providers:
@@ -68,6 +78,17 @@ Settings → AI. Three providers:
 | Anthropic | An API key from console.anthropic.com | `claude-opus-5` |
 | OpenAI | An API key | `gpt-4.1` |
 | Ollama | Ollama running locally | `qwen3:8b` |
+
+Reflections run as **two calls in parallel**: a streaming prose reply with no
+JSON schema (that constraint is what made an earlier version answer in clipped
+single sentences), and a small structured tagging pass that feeds the Entries
+list and the Patterns charts. Both use adaptive thinking. Settings →
+"How much should it write back?" picks Brief / Conversational / Deep, which sets
+the target length and the reasoning effort (`medium` / `high` / `xhigh`).
+
+You can reply to any reflection and keep talking — the entry, its context and
+the first reflection are replayed as a real conversation, so a follow-up
+continues the thread instead of starting over. Threads are saved with the entry.
 
 The key is stored under its own localStorage entry (`throughline.ai`), separate
 from the journal, so exporting or erasing your journal never touches it. It is
@@ -108,7 +129,7 @@ Storage keys:
 
 | Key | Holds |
 |---|---|
-| `throughline.v1` | entries, reports, prefs — the export payload |
+| `throughline.v1` | entries (incl. reflections + chat threads), reports, prefs — the export payload |
 | `throughline.ai` | provider, key, model — never exported |
 | `throughline.habits.v1` | the reduced Habit Casino day index |
 | `throughline.fb` | your Firebase config (not a secret) |

@@ -167,6 +167,34 @@ html[data-theme="light"] .scale button.on{color:#fff;}
 .distortion .qt{font-size:13.5px; font-style:italic; color:var(--dim); border-left:2px solid var(--line2); padding-left:9px; margin:6px 0;}
 .distortion .rf{font-size:13.5px; color:var(--fg2); line-height:1.55;}
 
+/* ---------- prose reflection & follow-up chat ---------- */
+.reflection{font-size:15.5px; line-height:1.72; color:var(--fg2);}
+.reflection p{margin:0 0 14px;}
+.reflection p:last-child{margin-bottom:0;}
+.reflection em{color:var(--fg); font-style:italic;}
+.reflection strong{color:var(--fg); font-weight:600;}
+.reflection h4{font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin:20px 0 8px;}
+.reflection ul{margin:0 0 14px; padding-left:20px;}
+.reflection li{margin-bottom:7px;}
+.reflection .caret{display:inline-block; width:8px; height:16px; background:var(--accent); vertical-align:-3px; margin-left:2px; animation:blink 1.1s step-end infinite;}
+@keyframes blink{50%{opacity:0;}}
+
+.thread{margin-top:18px; border-top:1px solid var(--line); padding-top:16px;}
+.bub{margin-bottom:14px; font-size:15px; line-height:1.65;}
+.bub.me{
+  background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius-sm);
+  padding:11px 13px; color:var(--fg); white-space:pre-wrap;
+}
+.bub.ai{color:var(--fg2);}
+.bub.ai p{margin:0 0 12px;}
+.bub.ai p:last-child{margin-bottom:0;}
+.ask{display:flex; gap:8px; align-items:flex-end; margin-top:14px;}
+.ask textarea{
+  flex:1; min-height:44px; max-height:180px; resize:none; font-size:15px;
+  padding:11px 12px; line-height:1.45;
+}
+.ask button{flex:0 0 auto; height:44px;}
+
 /* ============================== ENTRIES ============================== */
 .heat{display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,1fr); gap:3px; overflow-x:auto; padding:2px 0 6px;}
 .heat i{width:11px; height:11px; border-radius:2.5px; background:var(--bg2); display:block; cursor:pointer;}
@@ -244,6 +272,37 @@ html[data-theme="light"] .scale button.on{color:#fff;}
 details.disc{border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 13px; margin-top:10px; background:var(--bg2);}
 details.disc summary{font-size:12.5px; color:var(--dim); cursor:pointer; font-weight:500;}
 details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 0 0;}
+/* ============================== FOCUS MODE ==============================
+   Start typing and the app gets out of the way — the chrome fades, the sheet
+   grows, and nothing is left but the words. Any mouse movement (or Escape, or
+   the "done" affordance for touch) brings it all back. */
+header.top, .datebar, .mic-row, #moodCard, #habitToday, #reflectRow, #aiOut,
+#entryNav, nav.tabs, .editor-wrap, .editor-meta{
+  transition:opacity .55s ease, transform .55s ease, background .55s ease, border-color .55s ease;
+}
+body.zen header.top, body.zen .datebar, body.zen .mic-row, body.zen #moodCard,
+body.zen #habitToday, body.zen #reflectRow, body.zen #aiOut, body.zen #entryNav,
+body.zen .editor-meta{
+  opacity:0; pointer-events:none;
+}
+body.zen nav.tabs{opacity:0; pointer-events:none; transform:translateY(70%);}
+body.zen .editor-wrap{background:transparent; border-color:transparent;}
+body.zen #editor{min-height:76vh;}
+body.zen, body.zen #editor{cursor:none;}   /* the pointer is the way out, so it hides too */
+
+.zen-exit{
+  position:fixed; right:16px; bottom:calc(18px + var(--safe-b)); z-index:40;
+  font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+  background:var(--panel); border:1px solid var(--line); border-radius:999px;
+  padding:8px 15px; opacity:0; pointer-events:none; transition:opacity .55s ease;
+}
+body.zen .zen-exit{opacity:.4; pointer-events:auto; cursor:pointer;}
+body.zen .zen-exit:hover{opacity:1;}
+@media (prefers-reduced-motion:reduce){
+  header.top, .datebar, .mic-row, #moodCard, #habitToday, #reflectRow, #aiOut,
+  #entryNav, nav.tabs, .editor-wrap, .editor-meta, .zen-exit{transition:none;}
+}
+
 @media (max-width:400px){ #editor{font-size:18px;} .stat b{font-size:19px;} }
 </style>
 </head>
@@ -291,7 +350,7 @@ details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="moodCard">
     <label class="fld" style="margin-bottom:14px">
       <span>Mood — how the day felt</span>
       <div class="scale" id="moodScale"></div>
@@ -304,7 +363,7 @@ details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 
 
   <div id="habitToday"></div>
 
-  <div class="btn-row" style="margin-bottom:14px">
+  <div class="btn-row" style="margin-bottom:14px" id="reflectRow">
     <button class="btn primary wide" id="reflectBtn">✦ Reflect on this entry</button>
   </div>
 
@@ -400,9 +459,22 @@ details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 
       <span>What should the reflection focus on? (added to every analysis)</span>
       <textarea id="setPersona" rows="3" placeholder="e.g. Be direct with me. I care about faith, discipline, and whether I'm avoiding hard things."></textarea>
     </label>
+    <label class="fld" style="margin:14px 0 0">
+      <span>How much should it write back?</span>
+      <div class="seg" id="depthSeg">
+        <button data-d="brief">Brief</button>
+        <button data-d="conversational">Conversational</button>
+        <button data-d="deep">Deep</button>
+      </div>
+    </label>
+    <p class="hint" id="depthHint"></p>
     <div class="row" style="margin-top:6px">
       <div class="rl"><b>Auto-reflect on save</b><small>Analyze an entry as soon as you stop writing for a while</small></div>
       <div class="sw" id="swAuto"></div>
+    </div>
+    <div class="row" style="border-bottom:none">
+      <div class="rl"><b>Focus mode</b><small>Everything fades while you type — move the mouse, press Escape or tap “done” to bring it back</small></div>
+      <div class="sw" id="swZen"></div>
     </div>
   </div>
 
@@ -476,6 +548,8 @@ details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 
   <button data-v="settings"><span class="ic">⚙</span>Settings</button>
 </div></nav>
 
+<button class="zen-exit" id="zenExit" title="Leave focus mode (or just move the mouse)">done</button>
+
 <div class="toast" id="toast"></div>
 <input type="file" id="filePick" accept="application/json,.json" hidden />
 
@@ -509,6 +583,8 @@ function defaultState(){
     prefs: {
       theme: 'dark',
       autoReflect: false,
+      depth: 'conversational',   // brief | conversational | deep
+      zen: true,                 // fade the app away while typing
       persona: '',
       remind: false,
       lastRange: 30,
@@ -927,12 +1003,60 @@ const ANALYSIS_SCHEMA = {
   additionalProperties: false,
 };
 
+/* The reflection the writer actually reads. Deliberately NOT under a JSON
+   schema — constraining prose to a schema field is what made the old version
+   answer in clipped single sentences. This one streams as free text, the way a
+   reply on claude.ai does, and the tagging below runs as a separate call. */
+
+const DEPTHS = {
+  brief:          { words: '150 to 250 words, one or two paragraphs', effort: 'medium', max: 8000 },
+  conversational: { words: '350 to 550 words, three or four paragraphs', effort: 'high',  max: 20000 },
+  deep:           { words: '700 to 1000 words, taking as long as the entry deserves', effort: 'xhigh', max: 32000 },
+};
+function depthCfg(){ return DEPTHS[state.prefs.depth] || DEPTHS.conversational; }
+
+const REFLECT_SYSTEM =
+  'Someone has just written in their private journal and handed it to you to read. Write back to them.\n\n' +
+  'Write the way you would actually talk to a person you know well — full paragraphs, thinking on the ' +
+  'page, following the thread where it leads. Not a report. Not bullet points. Not a form with headings ' +
+  'and labels. No opening summary of what they just told you; they were there. Start wherever the ' +
+  'interesting thing is.\n\n' +
+  'What makes a reply worth reading:\n' +
+  '- Engage with the actual specifics. Names, hours, the exact thing that went wrong. Generic reflection ' +
+  'is worse than none.\n' +
+  '- Quote their own phrasing back when a word is carrying more weight than they noticed. People reveal ' +
+  'themselves in word choice.\n' +
+  '- Say the thing under the thing. If they wrote about a deadline but the entry is really about not ' +
+  'feeling trusted, say so — carefully, and as a question if you are not sure.\n' +
+  '- Connect to what they have written before when it genuinely rhymes. Name the date. Do not force it.\n' +
+  '- Disagree when they are being unfair to themselves, and equally when they are letting themselves off. ' +
+  'Warmth is not the same as agreement.\n' +
+  '- Let one or two real questions arise in the middle of the thought, not stapled to the end as a list.\n\n' +
+  'What to avoid: therapy-speak ("it sounds like", "I hear that", "hold space", "valid"), praising them ' +
+  'for journaling, restating their day, hedging every sentence into mush, and the tidy uplifting ' +
+  'closing line. It is fine to end unresolved.\n\n' +
+  'Length: aim for LENGTH_SPEC. Plain prose. You may use *italics* for emphasis and > for quoting them, ' +
+  'but no headings and no bullet lists.\n\n' + SAFETY_NOTE;
+
+function reflectSystem(){
+  return REFLECT_SYSTEM.replace('LENGTH_SPEC', depthCfg().words) + personaLine();
+}
+
+const CHAT_SYSTEM =
+  'You are in the middle of a conversation about someone\'s journal entry. You already wrote them a ' +
+  'reflection; now they are replying. Talk normally — same voice, same directness, no restating what ' +
+  'you already said and no re-introducing yourself. Match their length: a short question gets a short ' +
+  'answer, an opened-up answer gets a real one. You may change your mind if what they say warrants it.\n\n' +
+  SAFETY_NOTE;
+
+/* Tagging pass. Its output is never shown as prose — it feeds the Entries list,
+   the theme charts and the habit correlation, so short fields are correct here. */
 const ANALYSIS_SYSTEM =
-  'You read one day of someone\'s private journal and reflect it back to them. You are not a ' +
-  'therapist and not a cheerleader — you are a perceptive reader who notices what the writer ' +
-  'half-said.\n\n' +
+  'You are indexing one day of someone\'s private journal so it can be searched and charted later. ' +
+  'Extract structure only — a separate reply handles talking to the writer.\n\n' +
   'Return:\n' +
-  '- summary: two sentences, in second person ("You spent most of the day…"). Concrete, no platitudes.\n' +
+  '- summary: one or two sentences, second person ("You spent most of the day…"), used as the preview ' +
+  'line in a list of entries. Concrete, no platitudes.\n' +
   '- themes: 2–5 short lowercase tags naming what this entry is ABOUT (e.g. "work pressure", ' +
   '"family", "sleep", "avoidance"). Reuse ordinary words so they group across months.\n' +
   '- emotions: 1–4 emotions actually present in the text, lowercase.\n' +
@@ -1143,19 +1267,18 @@ function renderAIOut(e){
   const a = e.ai;
   const when = new Date(a.analyzedAt).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
   let html = '<div class="card ai-panel"><h3>✦ Reflection</h3>';
-  html += '<div class="ai-block"><div class="v">' + esc(a.summary) + '</div></div>';
 
-  if (a.observation){
-    html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
+  // Entries written before the prose reflection existed still have only the
+  // short summary — render whatever the entry actually has.
+  if (a.reflection){
+    html += '<div class="reflection" id="reflectionProse">' + mdToHtml(a.reflection) + '</div>';
+  } else {
+    html += '<div class="ai-block"><div class="v">' + esc(a.summary || '') + '</div></div>';
+    if (a.observation){
+      html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
+    }
   }
-  if (a.themes && a.themes.length){
-    html += '<div class="ai-block"><div class="k">Themes</div><div>' +
-      a.themes.map(t => '<span class="tag">' + esc(t) + '</span>').join('') + '</div></div>';
-  }
-  if (a.emotions && a.emotions.length){
-    html += '<div class="ai-block"><div class="k">Emotions · mood read ' + esc(a.moodEstimate) + '/10</div><div>' +
-      a.emotions.map(t => '<span class="tag plain">' + esc(t) + '</span>').join('') + '</div></div>';
-  }
+
   if (a.distortions && a.distortions.length){
     html += '<div class="ai-block"><div class="k">Worth a second look</div>';
     a.distortions.forEach(d => {
@@ -1165,16 +1288,117 @@ function renderAIOut(e){
     });
     html += '</div>';
   }
-  if (a.questions && a.questions.length){
+  if (!a.reflection && a.questions && a.questions.length){
     html += '<div class="ai-block"><div class="k">Sit with these</div><ul class="qlist">' +
       a.questions.map(q => '<li>' + esc(q) + '</li>').join('') + '</ul></div>';
   }
-  html += '<div class="editor-meta" style="margin-top:16px"><span>' + esc(a.model || '') + ' · ' + when +
+
+  // Follow-up conversation.
+  const thread = Array.isArray(a.thread) ? a.thread : [];
+  html += '<div class="thread" id="aiThread">';
+  thread.forEach(m => {
+    html += m.role === 'user'
+      ? '<div class="bub me">' + esc(m.content) + '</div>'
+      : '<div class="bub ai">' + mdToHtml(m.content) + '</div>';
+  });
+  html += '</div>';
+  html += '<div class="ask">' +
+    '<textarea id="askBox" rows="1" placeholder="Say something back…"></textarea>' +
+    '<button class="btn primary" id="askSend">Send</button></div>';
+
+  const tagLine = []
+    .concat((a.themes || []).map(t => '<span class="tag">' + esc(t) + '</span>'))
+    .concat((a.emotions || []).map(t => '<span class="tag plain">' + esc(t) + '</span>'))
+    .join('');
+  if (tagLine) html += '<div class="ai-block">' + tagLine + '</div>';
+
+  html += '<div class="editor-meta" style="margin-top:16px"><span>' + esc(a.model || '') +
+          (a.moodEstimate ? ' · mood read ' + esc(a.moodEstimate) + '/10' : '') + ' · ' + when +
           '</span><span class="spacer"></span><button class="btn sm ghost" id="redoAI">Redo</button></div>';
   html += '</div>';
   host.innerHTML = html;
+
   const redo = $('#redoAI');
   if (redo) redo.onclick = () => reflect(true);
+  wireAsk();
+}
+
+function wireAsk(){
+  const box = $('#askBox'), send = $('#askSend');
+  if (!box) return;
+  const grow = () => { box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight, 180) + 'px'; };
+  box.addEventListener('input', grow);
+  box.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)){ ev.preventDefault(); askFollowUp(); }
+  });
+  send.onclick = askFollowUp;
+}
+
+/* The entry, its context and the first reflection replayed as a real
+   conversation, so a follow-up continues the thread rather than starting over. */
+function entryContextMessage(e){
+  const recent = state.entries
+    .filter(x => x.id !== e.id && x.ai && x.text.trim())
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .slice(0, 12)
+    .map(x => x.date + ' (mood ' + (x.mood || x.ai.moodEstimate || '?') + '/10): ' + (x.ai.summary || '') +
+              ' [themes: ' + (x.ai.themes || []).join(', ') + ']')
+    .reverse();
+
+  const hab = habitData.days[e.date];
+  const habLine = hab && hab.completed.length
+    ? '\n\nWhat they actually got done that day (from their habit tracker): ' +
+      hab.completed.map(c => c.name).join(', ') + '.'
+    : '';
+
+  return (recent.length ? 'For context, their recent entries:\n' + recent.join('\n') + '\n\n---\n\n' : '') +
+    'Today is ' + longDate(e.date) + '.' +
+    (e.mood ? ' They rated the day ' + e.mood + '/10 for mood' + (e.energy ? ' and ' + e.energy + '/10 for energy' : '') + '.' : '') +
+    habLine +
+    '\n\nHere is the entry:\n\n' + e.text;
+}
+
+async function askFollowUp(){
+  const e = currentEntry();
+  const box = $('#askBox');
+  if (!e || !e.ai || !box) return;
+  const text = box.value.trim();
+  if (!text) return;
+  if (!aiReady()){ toast('Add an API key in Settings first', true); return; }
+
+  e.ai.thread = Array.isArray(e.ai.thread) ? e.ai.thread : [];
+  e.ai.thread.push({ role: 'user', content: text });
+  box.value = ''; box.style.height = 'auto';
+  save(); renderAIOut(e);
+
+  const host = $('#aiThread');
+  const bub = document.createElement('div');
+  bub.className = 'bub ai';
+  bub.innerHTML = '<span class="spin"></span>';
+  host.appendChild(bub);
+  bub.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+  const msgs = [
+    { role: 'user', content: entryContextMessage(e) },
+    { role: 'assistant', content: e.ai.reflection || e.ai.summary || '' },
+  ].concat(e.ai.thread.map(m => ({ role: m.role, content: m.content })));
+
+  try{
+    const reply = await streamAI({
+      system: CHAT_SYSTEM + personaLine(),
+      messages: msgs,
+      maxTokens: 16000,
+      effort: 'high',
+      onDelta: partial => { bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+    });
+    if (!reply || !reply.trim()) throw new Error('Empty reply — try again.');
+    e.ai.thread.push({ role: 'assistant', content: reply });
+    save(); renderAIOut(e);
+  }catch(err){
+    e.ai.thread.pop();                    // drop the unanswered question
+    save(); renderAIOut(e);
+    toast(err.message || 'Reply failed', true);
+  }
 }
 
 async function reflect(force){
@@ -1187,52 +1411,65 @@ async function reflect(force){
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Reading…';
 
-  // Recent context makes the observation about *you*, not just today.
-  const recent = state.entries
-    .filter(x => x.id !== e.id && x.ai && x.text.trim())
-    .sort((a,b) => b.date.localeCompare(a.date))
-    .slice(0, 12)
-    .map(x => x.date + ' (mood ' + (x.mood || x.ai.moodEstimate || '?') + '/10): ' + x.ai.summary +
-              ' [themes: ' + (x.ai.themes || []).join(', ') + ']')
-    .reverse();
+  const user = entryContextMessage(e);
+  const cfg = depthCfg();
+  const model = loadAI().model || MODEL_DEFAULTS[loadAI().provider];
 
-  const hab = habitData.days[e.date];
-  const habLine = hab && hab.completed.length
-    ? '\n\nWhat they actually got done that day (from their habit tracker): ' +
-      hab.completed.map(c => c.name).join(', ') + '.'
-    : '';
+  // Show the panel immediately so the prose has somewhere to stream into.
+  $('#aiOut').innerHTML = '<div class="card ai-panel"><h3>✦ Reflection</h3>' +
+    '<div class="reflection" id="reflectionProse"><span class="spin"></span></div></div>';
+  $('#aiOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const target = $('#reflectionProse');
 
-  const user =
-    (recent.length ? 'For context, their recent entries:\n' + recent.join('\n') + '\n\n---\n\n' : '') +
-    'Today is ' + longDate(e.date) + '.' +
-    (e.mood ? ' They rated the day ' + e.mood + '/10 for mood' + (e.energy ? ' and ' + e.energy + '/10 for energy' : '') + '.' : '') +
-    habLine +
-    '\n\nHere is the entry:\n\n' + e.text;
+  // The prose the writer reads, and the tagging the charts need, are different
+  // jobs with different shapes — so they run as two calls, side by side.
+  const prosePromise = streamAI({
+    system: reflectSystem(),
+    messages: [{ role: 'user', content: user }],
+    maxTokens: cfg.max,
+    effort: cfg.effort,
+    onDelta: partial => { target.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+  });
+  const metaPromise = callAI({
+    system: ANALYSIS_SYSTEM + personaLine(),
+    messages: [{ role: 'user', content: user }],
+    schema: ANALYSIS_SCHEMA,
+    maxTokens: 16000,
+    effort: 'medium',
+  }).catch(err => { console.warn('tagging pass failed', err); return null; });
 
   try{
-    const out = await callAI({
-      system: ANALYSIS_SYSTEM + personaLine(),
-      messages: [{ role: 'user', content: user }],
-      schema: ANALYSIS_SCHEMA,
-      maxTokens: 16000,
-    });
-    if (!out) throw new Error('Could not read the response as JSON. Try again.');
+    const results = await Promise.allSettled([prosePromise, metaPromise]);
+    const prose = results[0].status === 'fulfilled' ? results[0].value : null;
+    const meta  = results[1].status === 'fulfilled' ? results[1].value : null;
+
+    if (!prose && !meta) throw (results[0].reason || new Error('Reflection failed'));
+
+    const prev = e.ai || {};
     e.ai = {
       analyzedAt: Date.now(),
-      model: loadAI().model || MODEL_DEFAULTS[loadAI().provider],
-      summary: out.summary || '',
-      themes: (out.themes || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 6),
-      emotions: (out.emotions || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5),
-      moodEstimate: clamp(Number(out.mood_estimate) || 5, 1, 10),
-      observation: out.observation || '',
-      distortions: Array.isArray(out.distortions) ? out.distortions.slice(0, 3) : [],
-      questions: Array.isArray(out.questions) ? out.questions.slice(0, 4) : [],
+      model: model,
+      reflection: (prose && prose.trim()) || prev.reflection || '',
+      thread: [],
+      summary: (meta && meta.summary) || prev.summary || '',
+      themes: meta ? (meta.themes || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 6) : (prev.themes || []),
+      emotions: meta ? (meta.emotions || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5) : (prev.emotions || []),
+      moodEstimate: meta ? clamp(Number(meta.mood_estimate) || 5, 1, 10) : (prev.moodEstimate || null),
+      observation: (meta && meta.observation) || '',
+      distortions: meta && Array.isArray(meta.distortions) ? meta.distortions.slice(0, 3) : [],
+      questions: meta && Array.isArray(meta.questions) ? meta.questions.slice(0, 4) : [],
     };
+    // A missing summary would leave a blank row in the Entries list.
+    if (!e.ai.summary && e.ai.reflection){
+      e.ai.summary = e.ai.reflection.replace(/\s+/g, ' ').trim().slice(0, 160);
+    }
     save();
     renderWrite();
-    $('#aiOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!prose) toast('Tagged, but the written reflection failed — try Redo', true);
+    else if (!meta) toast('Reflection written; tagging failed, so charts may miss this day', true);
   }catch(err){
     toast(err.message || 'Reflection failed', true);
+    renderAIOut(e);
   }finally{
     btn.disabled = false;
     btn.textContent = '✦ Reflect on this entry';
@@ -2104,6 +2341,14 @@ function renderSettings(){
   $('#baseField').hidden = s.provider !== 'ollama';
   $('#setPersona').value = state.prefs.persona || '';
   $('#swAuto').classList.toggle('on', !!state.prefs.autoReflect);
+  $('#swZen').classList.toggle('on', state.prefs.zen !== false);
+  const depth = state.prefs.depth || 'conversational';
+  $$('#depthSeg button').forEach(b => b.classList.toggle('on', b.dataset.d === depth));
+  $('#depthHint').textContent = {
+    brief: 'A couple of paragraphs. Fastest and cheapest.',
+    conversational: 'A few paragraphs that follow the thread — closest to a reply on claude.ai.',
+    deep: 'A long, unhurried read. Slower, and costs more per entry.',
+  }[depth];
   $('#swRemind').classList.toggle('on', !!state.prefs.remind);
   $('#thDark').classList.toggle('on', state.prefs.theme !== 'light');
   $('#thLight').classList.toggle('on', state.prefs.theme === 'light');
@@ -2145,6 +2390,10 @@ function wireSettings(){
 
   $('#setPersona').onchange = e => { state.prefs.persona = e.target.value; save(); };
   $('#swAuto').onclick   = () => { state.prefs.autoReflect = !state.prefs.autoReflect; save(); renderSettings(); };
+  $('#swZen').onclick    = () => { state.prefs.zen = state.prefs.zen === false; save(); renderSettings(); };
+  $$('#depthSeg button').forEach(b => {
+    b.onclick = () => { state.prefs.depth = b.dataset.d; save(); renderSettings(); };
+  });
   $('#swRemind').onclick = () => {
     state.prefs.remind = !state.prefs.remind;
     if (state.prefs.remind && 'Notification' in window && Notification.permission === 'default'){
@@ -2240,10 +2489,55 @@ function setTheme(t){
   save(); renderSettings();
 }
 
+/* ============================== FOCUS MODE ==============================
+   Typing hides everything but the page. Pointer movement is the way out, per
+   the usual convention — with Escape and a "done" target so a touch device or
+   a keyboard-only user is never stuck in it. */
+
+let zenOn = false, zenAnchor = null, zenTimer = null;
+
+function enterZen(){
+  if (zenOn || !state.prefs.zen || listening) return;   // dictation needs its stop button
+  zenOn = true;
+  zenAnchor = null;                 // first pointer event after entering sets the baseline
+  document.body.classList.add('zen');
+}
+function exitZen(){
+  if (!zenOn) return;
+  zenOn = false;
+  zenAnchor = null;
+  document.body.classList.remove('zen');
+}
+function zenOnType(){
+  if (!state.prefs.zen) return;
+  clearTimeout(zenTimer);
+  zenTimer = setTimeout(enterZen, 400);   // a short beat, so a single stray key doesn't flicker
+}
+
+function wireZen(){
+  // Entering hides the cursor, which itself can emit a mousemove; the first
+  // event only records where the pointer was, and real movement is what exits.
+  document.addEventListener('mousemove', ev => {
+    if (!zenOn) return;
+    if (!zenAnchor){ zenAnchor = { x: ev.clientX, y: ev.clientY }; return; }
+    if (Math.abs(ev.clientX - zenAnchor.x) + Math.abs(ev.clientY - zenAnchor.y) > 8) exitZen();
+  }, { passive: true });
+
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') exitZen(); });
+  document.addEventListener('touchstart', ev => {
+    if (zenOn && !$('#editor').contains(ev.target)) exitZen();
+  }, { passive: true });
+  document.addEventListener('wheel', () => { if (zenOn) exitZen(); }, { passive: true });
+
+  $('#zenExit').onclick = exitZen;
+  $('#editor').addEventListener('blur', exitZen);
+}
+
 /* ============================== ROUTING & INIT ============================== */
 
 let curView = 'write';
 function go(v){
+  exitZen();
   if (curView === 'write' && v !== 'write') pruneEmpty();
   curView = v;
   $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
@@ -2268,6 +2562,7 @@ function wire(){
     e.text = ed.value;
     touch();
     updateWordCount();
+    zenOnType();
     if (state.prefs.autoReflect){
       clearTimeout(autoTimer);
       autoTimer = setTimeout(() => { if (!e.ai && words(e.text) >= 60) reflect(false); }, 12000);
@@ -2334,6 +2629,7 @@ function init(){
 
   initDictation();
   wire();
+  wireZen();
   wireSettings();
   renderWrite();
   flagSaved('saved');
