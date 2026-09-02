@@ -61,13 +61,25 @@ export from Habit Casino (Settings → Export) and import the JSON here.
 
 ## Focus mode
 
-Start typing and the app fades out — header, mood scales, buttons and nav all
-go, the sheet loses its border, and the editor grows to fill the screen. Moving
-the pointer brings it back (a small jitter won't, since hiding the cursor can
-itself emit one); Escape and the "done" chip work too, so touch and
-keyboard-only use are never stuck. It stays off while dictating, so the stop
-button remains reachable, and switching tabs always restores the UI. Toggle it
-in Settings → Reflection style.
+Start typing and the app fades out — header, mood scales, panels, buttons and
+nav all go, the sheet loses its border, and the editor fills the screen.
+
+Getting out is deliberately hard to do by accident. Only moving the pointer
+within **100px of a screen edge** ends it (`ZEN_EDGE`) — roaming around the
+middle is reading your own writing, not asking for the app back. There is no
+scroll handler at all, so you can scroll freely while staying in focus. Escape
+and the low-contrast "done" chip cover touch and keyboard-only use, it stays off
+while dictating so the stop button remains reachable, and leaving the Write tab
+always restores the chrome.
+
+The editor auto-grows to fit its content, so the page is the only thing that
+scrolls — a textarea scrolling inside a scrolling page is a trap to get stuck
+in. In focus mode `sizeZenPad()` adds exactly enough trailing space for the last
+line of text to scroll up to the top third of the screen, no further; whatever
+the faded panels below already contribute is subtracted, so it lands on the same
+mark for a three-line entry and a two-hundred-line one.
+
+Toggle it in Settings → Reflection style.
 
 ## Turning on the AI
 
@@ -85,6 +97,14 @@ single sentences), and a small structured tagging pass that feeds the Entries
 list and the Patterns charts. Both use adaptive thinking. Settings →
 "How much should it write back?" picks Brief / Conversational / Deep, which sets
 the target length and the reasoning effort (`medium` / `high` / `xhigh`).
+
+**Talk it through** (the button under the editor) opens a conversation *before
+or while* you write, as opposed to the reflection, which comes after. It opens
+by saying something real — an observation across recent entries, a guess at what
+is going on — rather than firing a question and stopping, and then it is just a
+chat. It sees the draft you have so far. Threads save on the entry as `muse`
+and are separate from the reflection thread. With no API key the button falls
+back to dropping a written prompt into the entry, as it used to.
 
 You can reply to any reflection and keep talking — the entry, its context and
 the first reflection are replayed as a real conversation, so a follow-up
@@ -129,7 +149,7 @@ Storage keys:
 
 | Key | Holds |
 |---|---|
-| `throughline.v1` | entries (incl. reflections + chat threads), reports, prefs — the export payload |
+| `throughline.v1` | entries (text, reflections, both chat threads), reports, prefs — the export payload |
 | `throughline.ai` | provider, key, model — never exported |
 | `throughline.habits.v1` | the reduced Habit Casino day index |
 | `throughline.fb` | your Firebase config (not a secret) |

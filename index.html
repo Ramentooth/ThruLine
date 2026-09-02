@@ -277,17 +277,24 @@ details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 
    grows, and nothing is left but the words. Any mouse movement (or Escape, or
    the "done" affordance for touch) brings it all back. */
 header.top, .datebar, .mic-row, #moodCard, #habitToday, #reflectRow, #aiOut,
-#entryNav, nav.tabs, .editor-wrap, .editor-meta{
+#museOut, #entryNav, nav.tabs, .editor-wrap, .editor-meta{
   transition:opacity .55s ease, transform .55s ease, background .55s ease, border-color .55s ease;
 }
 body.zen header.top, body.zen .datebar, body.zen .mic-row, body.zen #moodCard,
-body.zen #habitToday, body.zen #reflectRow, body.zen #aiOut, body.zen #entryNav,
-body.zen .editor-meta{
+body.zen #habitToday, body.zen #reflectRow, body.zen #aiOut, body.zen #museOut,
+body.zen #entryNav, body.zen .editor-meta{
   opacity:0; pointer-events:none;
 }
 body.zen nav.tabs{opacity:0; pointer-events:none; transform:translateY(70%);}
 body.zen .editor-wrap{background:transparent; border-color:transparent;}
 body.zen #editor{min-height:76vh;}
+/* Room to scroll the end of the text up to the top third of the screen. The
+   exact value is computed on entry (see sizeZenPad) because the invisible
+   panels below the sheet already contribute some of it. */
+body.zen #view-write{padding-bottom:var(--zen-pad, 0px);}
+/* The editor grows to fit its content, so the page is the only scroller —
+   a textarea scrolling inside a scrolling page is a trap to get stuck in. */
+#editor{overflow-y:hidden;}
 body.zen, body.zen #editor{cursor:none;}   /* the pointer is the way out, so it hides too */
 
 .zen-exit{
@@ -346,9 +353,11 @@ body.zen .zen-exit:hover{opacity:1;}
     <div class="editor-meta">
       <span id="wordCount">0 words</span>
       <span class="spacer"></span>
-      <button class="btn sm ghost" id="promptBtn">✦ Prompt me</button>
+      <button class="btn sm ghost" id="promptBtn">✦ Talk it through</button>
     </div>
   </div>
+
+  <div id="museOut"></div>
 
   <div class="card" id="moodCard">
     <label class="fld" style="margin-bottom:14px">
@@ -1103,7 +1112,8 @@ function ensureEntry(){
 function pruneEmpty(){
   const before = state.entries.length;
   state.entries = state.entries.filter(e =>
-    e.id === curId || e.text.trim() || Number.isFinite(e.mood) || Number.isFinite(e.energy) || e.ai);
+    e.id === curId || e.text.trim() || Number.isFinite(e.mood) || Number.isFinite(e.energy) ||
+    e.ai || (Array.isArray(e.muse) && e.muse.length));
   if (state.entries.length !== before) save();
 }
 
@@ -1129,11 +1139,13 @@ function renderWrite(){
   const ed = $('#editor');
   if (ed.value !== (e ? e.text : '')) ed.value = e ? e.text : '';
   updateWordCount();
+  growEditor();
 
   renderScale('#moodScale', e && e.mood, v => { ensureEntry().mood = v; touch(); renderWrite(); });
   renderScale('#energyScale', e && e.energy, v => { ensureEntry().energy = v; touch(); renderWrite(); });
 
   renderHabitToday();
+  renderMuse(e);
   renderAIOut(e);
   renderEntryNav(list, e);
   renderStreakChip();
@@ -1177,6 +1189,28 @@ function touch(){
 function updateWordCount(){
   const n = words($('#editor').value);
   $('#wordCount').textContent = n + (n === 1 ? ' word' : ' words');
+}
+
+/* Keep the sheet exactly as tall as what is written, so the page scrolls and
+   the textarea never does. The CSS min-height still sets the floor. */
+function growEditor(){
+  const ed = $('#editor');
+  if (!ed) return;
+  ed.style.height = 'auto';
+  ed.style.height = ed.scrollHeight + 'px';
+}
+
+/* How much trailing space the page needs for the last line to reach the top
+   third. Whatever sits below the sheet — faded out but still occupying space —
+   already counts toward it, so only the shortfall is added. */
+function sizeZenPad(){
+  const ed = $('#editor');
+  if (!ed) return;
+  document.documentElement.style.setProperty('--zen-pad', '0px');
+  const edBottom = ed.getBoundingClientRect().bottom + window.scrollY;
+  const below = Math.max(0, document.documentElement.scrollHeight - edBottom);
+  const want = window.innerHeight * 2 / 3;
+  document.documentElement.style.setProperty('--zen-pad', Math.max(0, Math.round(want - below)) + 'px');
 }
 
 function renderStreakChip(){
@@ -1326,11 +1360,7 @@ function renderAIOut(e){
 function wireAsk(){
   const box = $('#askBox'), send = $('#askSend');
   if (!box) return;
-  const grow = () => { box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight, 180) + 'px'; };
-  box.addEventListener('input', grow);
-  box.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)){ ev.preventDefault(); askFollowUp(); }
-  });
+  autoGrow(box, askFollowUp);
   send.onclick = askFollowUp;
 }
 
@@ -1485,41 +1515,176 @@ const FALLBACK_PROMPTS = [
   'What are you pretending not to know right now?',
 ];
 
+/* ---------- talk it through ----------
+   A conversation you have *before or while* writing, as opposed to the
+   reflection thread, which happens after. It opens by saying something real
+   rather than firing a question, and then it is just a chat. */
+
+const MUSE_SYSTEM =
+  'Someone has their journal open and wants to think out loud with you — either they are stuck on ' +
+  'where to start, or they are mid-entry and something is not resolving. You are the friend they ' +
+  'talk to while working it out.\n\n' +
+  'Talk normally. This is a conversation, not a prompt generator and not an exercise. Do not open ' +
+  'with a bare question and stop; say something first — an observation about what they have been ' +
+  'writing lately, a guess at what is actually going on, something to push against. Then a question ' +
+  'can follow naturally if one is genuinely there.\n\n' +
+  'Be concrete about their actual life: the people, the work, the recurring thing from last week. ' +
+  'If you notice a pattern across their recent entries, name it and say which days. Have opinions. ' +
+  'Disagree with them when they deserve it. It is fine to be wrong out loud — "my guess is X, tell ' +
+  'me if that is off" beats a safe question every time.\n\n' +
+  'Keep turns conversational — a few sentences to a couple of short paragraphs, the length a person ' +
+  'actually types. Match them: if they give you one line, do not write them an essay. No headings, ' +
+  'no bullet lists, no therapy-speak, no praising them for journaling, no summarising back what they ' +
+  'just said.\n\n' + SAFETY_NOTE;
+
+/* The hidden first turn that sets the scene. Kept out of the visible thread so
+   the conversation reads as though it simply started. */
+function museContext(e){
+  const recent = state.entries
+    .filter(x => x.id !== e.id && x.text.trim())
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .slice(0, 10)
+    .map(x => x.date + ' (mood ' + (x.mood || (x.ai && x.ai.moodEstimate) || '?') + '/10): ' +
+              ((x.ai && x.ai.summary) || x.text.slice(0, 200)) +
+              (x.ai && x.ai.themes && x.ai.themes.length ? ' [themes: ' + x.ai.themes.join(', ') + ']' : ''))
+    .reverse();
+
+  const draft = e.text.trim();
+  const hab = habitData.days[e.date];
+
+  return 'Today is ' + longDate(e.date) + '.\n\n' +
+    (recent.length ? 'What they have been writing lately:\n' + recent.join('\n') + '\n\n' : 'They have not written much yet.\n\n') +
+    (hab && hab.completed.length ? 'What they got done today, from their habit tracker: ' +
+      hab.completed.map(c => c.name).join(', ') + '.\n\n' : '') +
+    (draft
+      ? 'They have started today\'s entry. Here is the draft so far:\n\n' + draft +
+        '\n\nOpen the conversation from what is actually in that draft.'
+      : 'Today\'s entry is still blank — they have opened it and want to talk before they write.') +
+    '\n\nSay the first thing.';
+}
+
+function renderMuse(e){
+  const host = $('#museOut');
+  if (!e || !Array.isArray(e.muse) || !e.muse.length){ host.innerHTML = ''; return; }
+  let html = '<div class="card ai-panel"><h3>✦ Talking it through</h3><div id="museThread">';
+  e.muse.forEach(m => {
+    html += m.role === 'user'
+      ? '<div class="bub me">' + esc(m.content) + '</div>'
+      : '<div class="bub ai">' + mdToHtml(m.content) + '</div>';
+  });
+  html += '</div><div class="ask">' +
+    '<textarea id="museBox" rows="1" placeholder="Say something back…"></textarea>' +
+    '<button class="btn primary" id="museSend">Send</button></div>' +
+    '<div class="editor-meta" style="margin-top:14px"><span class="spacer"></span>' +
+    '<button class="btn sm ghost" id="museClear">Clear</button></div></div>';
+  host.innerHTML = html;
+
+  autoGrow($('#museBox'), museSend);
+  $('#museSend').onclick = museSend;
+  $('#museClear').onclick = () => {
+    if (!confirm('Clear this conversation? Your entry is untouched.')) return;
+    const cur = currentEntry();
+    if (cur){ cur.muse = []; save(); renderMuse(cur); }
+  };
+}
+
+/* Shared by both chat boxes. */
+function autoGrow(box, onSend){
+  if (!box) return;
+  const grow = () => { box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight, 180) + 'px'; };
+  box.addEventListener('input', grow);
+  box.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)){ ev.preventDefault(); onSend(); }
+  });
+}
+
+/* One streaming turn for the talk-it-through thread. `seed` opens it. */
+async function museTurn(e, seed){
+  const host = $('#museThread');
+  const bub = document.createElement('div');
+  bub.className = 'bub ai';
+  bub.innerHTML = '<span class="spin"></span>';
+  if (host) host.appendChild(bub);
+  bub.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  const msgs = [{ role: 'user', content: museContext(e) }]
+    .concat(e.muse.map(m => ({ role: m.role, content: m.content })));
+
+  try{
+    const reply = await streamAI({
+      system: MUSE_SYSTEM + personaLine(),
+      messages: msgs,
+      maxTokens: 16000,
+      effort: 'high',
+      onDelta: partial => { bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+    });
+    if (!reply || !reply.trim()) throw new Error('Empty reply — try again.');
+    e.muse.push({ role: 'assistant', content: reply });
+    save(); renderMuse(e);
+    return true;
+  }catch(err){
+    if (!seed) e.muse.pop();          // drop the question that never got answered
+    save(); renderMuse(e);
+    toast(err.message || 'Reply failed', true);
+    return false;
+  }
+}
+
+async function museSend(){
+  const e = currentEntry();
+  const box = $('#museBox');
+  if (!e || !box) return;
+  const text = box.value.trim();
+  if (!text) return;
+  if (!aiReady()){ toast('Add an API key in Settings first', true); return; }
+  e.muse = Array.isArray(e.muse) ? e.muse : [];
+  e.muse.push({ role: 'user', content: text });
+  box.value = ''; box.style.height = 'auto';
+  save(); renderMuse(e);
+  await museTurn(e, false);
+}
+
+/* The "Talk it through" button. With no key configured it falls back to
+   dropping a written prompt into the entry, which is what it used to do. */
 async function promptMe(){
-  const ed = $('#editor');
-  const insert = t => {
+  const e = ensureEntry();
+
+  if (!aiReady()){
+    const ed = $('#editor');
     const pre = ed.value.trim();
-    ed.value = (pre ? pre + '\n\n' : '') + t + '\n\n';
-    const e = ensureEntry();
+    ed.value = (pre ? pre + '\n\n' : '') + FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)] + '\n\n';
     e.text = ed.value;
     touch(); updateWordCount();
-    ed.focus();
-    ed.setSelectionRange(ed.value.length, ed.value.length);
-  };
-  if (!aiReady()){
-    insert(FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)]);
+    ed.focus(); ed.setSelectionRange(ed.value.length, ed.value.length);
+    toast('Add an API key in Settings to talk instead');
     return;
   }
+
+  e.muse = Array.isArray(e.muse) ? e.muse : [];
+
+  // Already talking — just take them back to it.
+  if (e.muse.length){
+    renderMuse(e);
+    $('#museOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const box = $('#museBox'); if (box) box.focus();
+    return;
+  }
+
   const btn = $('#promptBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>';
+  exitZen();
+
+  $('#museOut').innerHTML = '<div class="card ai-panel"><h3>✦ Talking it through</h3>' +
+    '<div id="museThread"></div></div>';
+  $('#museOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
   try{
-    const recent = state.entries.filter(x => x.ai).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 8)
-      .map(x => x.date + ': ' + x.ai.summary + ' [' + (x.ai.themes || []).join(', ') + ']').reverse();
-    const q = await callAI({
-      system: 'You write a single journaling prompt for one person, based on what they have been ' +
-              'writing lately. One sentence, a question, specific to their life and unresolved ' +
-              'threads — never generic self-help. Output only the question, no quotes, no preamble.' +
-              personaLine(),
-      messages: [{ role: 'user', content: recent.length
-        ? 'Their recent entries:\n' + recent.join('\n') + '\n\nGive me one prompt for today.'
-        : 'They have not written much yet. Give me one good opening prompt for a daily journal.' }],
-      maxTokens: 2000, effort: 'low',
-    });
-    insert(String(q).trim().replace(/^["“]|["”]$/g, ''));
-  }catch(err){
-    insert(FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)]);
+    await museTurn(e, true);
+    const box = $('#museBox'); if (box) box.focus();
   }finally{
-    btn.disabled = false; btn.textContent = '✦ Prompt me';
+    btn.disabled = false;
+    btn.textContent = '✦ Talk it through';
   }
 }
 
@@ -2494,19 +2659,23 @@ function setTheme(t){
    the usual convention — with Escape and a "done" target so a touch device or
    a keyboard-only user is never stuck in it. */
 
-let zenOn = false, zenAnchor = null, zenTimer = null;
+const ZEN_EDGE = 100;   // px from any screen edge that counts as "reaching for the UI"
+
+let zenOn = false, zenStarted = 0, zenTimer = null;
 
 function enterZen(){
   if (zenOn || !state.prefs.zen || listening) return;   // dictation needs its stop button
   zenOn = true;
-  zenAnchor = null;                 // first pointer event after entering sets the baseline
+  zenStarted = Date.now();
   document.body.classList.add('zen');
+  growEditor();
+  sizeZenPad();
 }
 function exitZen(){
   if (!zenOn) return;
   zenOn = false;
-  zenAnchor = null;
   document.body.classList.remove('zen');
+  growEditor();
 }
 function zenOnType(){
   if (!state.prefs.zen) return;
@@ -2515,22 +2684,28 @@ function zenOnType(){
 }
 
 function wireZen(){
-  // Entering hides the cursor, which itself can emit a mousemove; the first
-  // event only records where the pointer was, and real movement is what exits.
+  // Moving the pointer around the middle of the screen is reading your own
+  // writing, not asking for the app back — only reaching for an edge exits.
+  // Note there is deliberately no wheel/scroll handler: scrolling to look back
+  // over what you wrote has to be possible without breaking focus.
   document.addEventListener('mousemove', ev => {
     if (!zenOn) return;
-    if (!zenAnchor){ zenAnchor = { x: ev.clientX, y: ev.clientY }; return; }
-    if (Math.abs(ev.clientX - zenAnchor.x) + Math.abs(ev.clientY - zenAnchor.y) > 8) exitZen();
+    if (Date.now() - zenStarted < 250) return;   // hiding the cursor can itself emit a move
+    const nearEdge =
+      ev.clientX <= ZEN_EDGE || ev.clientY <= ZEN_EDGE ||
+      ev.clientX >= window.innerWidth  - ZEN_EDGE ||
+      ev.clientY >= window.innerHeight - ZEN_EDGE;
+    if (nearEdge) exitZen();
   }, { passive: true });
 
   document.addEventListener('keydown', ev => { if (ev.key === 'Escape') exitZen(); });
   document.addEventListener('touchstart', ev => {
     if (zenOn && !$('#editor').contains(ev.target)) exitZen();
   }, { passive: true });
-  document.addEventListener('wheel', () => { if (zenOn) exitZen(); }, { passive: true });
 
   $('#zenExit').onclick = exitZen;
   $('#editor').addEventListener('blur', exitZen);
+  window.addEventListener('resize', () => { growEditor(); if (zenOn) sizeZenPad(); });
 }
 
 /* ============================== ROUTING & INIT ============================== */
@@ -2562,6 +2737,7 @@ function wire(){
     e.text = ed.value;
     touch();
     updateWordCount();
+    growEditor();
     zenOnType();
     if (state.prefs.autoReflect){
       clearTimeout(autoTimer);
