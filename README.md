@@ -8,7 +8,14 @@ server of mine. Your entries live in your browser; the only outbound calls are
 to the AI provider you configure and (if you switch it on) your own Firebase
 project.
 
-**Live at https://ramentooth.github.io/ThruLine/**
+**Live at https://thruline-a12e4.web.app** (Firebase Hosting, primary)
+**Also at https://ramentooth.github.io/ThruLine/** (GitHub Pages)
+
+Firebase Hosting is the better address of the two: its domains are authorized
+for Firebase Auth automatically, so Google sign-in works there with no extra
+setup. Any other origin — the Pages URL, a Tailscale name — has to be added by
+hand under Authentication → Settings → Authorized domains, or sign-in fails
+with `auth/unauthorized-domain`.
 
 ## Run it locally
 
@@ -121,8 +128,18 @@ the beta header on preflight, the app retries once without it automatically.
 
 ## Optional: sync across devices
 
-Settings → Sync & backup → Firebase sync. Paste the config object from your
-Firebase console, sign in with Google, done. Entries merge per-entry by
+The config is already baked into `FB_CONFIG` at the top of `index.html`
+(project `thruline-a12e4`), so on a new device the only step is Settings →
+Sync & backup → Firebase sync → **Sign in with Google**. Those values are public
+identifiers by design; the rules and the authorized-domain list are what protect
+the data. The paste box under "Use a different Firebase project" overrides the
+built-in config on one device only.
+
+Deploy hosting and rules with:
+
+```bash
+firebase deploy
+``` Entries merge per-entry by
 `updatedAt`, so writing on your phone and then your laptop never silently drops
 one of them.
 
