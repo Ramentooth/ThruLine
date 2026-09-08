@@ -167,6 +167,46 @@ html[data-theme="light"] .scale button.on{color:#fff;}
 .distortion .qt{font-size:13.5px; font-style:italic; color:var(--dim); border-left:2px solid var(--line2); padding-left:9px; margin:6px 0;}
 .distortion .rf{font-size:13.5px; color:var(--fg2); line-height:1.55;}
 
+/* ---------- thinking animation ----------
+   Real extracted concepts rising off the exact spans they came from, meeting
+   remembered themes drifting in from the journal, converging where the
+   reflection is about to appear. Nothing here is decorative filler — every
+   bubble corresponds to something actually sent to the model. */
+#thinkLayer{position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden;}
+#thinkLayer.off{display:none;}
+
+/* A copy of the sheet's text, laid exactly over the textarea, so spans can be
+   highlighted — a textarea cannot style its own contents. */
+#thinkMirror{
+  position:absolute; white-space:pre-wrap; word-wrap:break-word; color:transparent;
+  pointer-events:none; overflow:hidden;
+}
+#thinkMirror mark{
+  background:transparent; color:transparent; border-radius:4px;
+  box-shadow:0 0 0 0 var(--accent-soft); transition:background .45s ease, box-shadow .45s ease;
+}
+#thinkMirror mark.lit{background:var(--accent-soft); box-shadow:0 0 0 4px var(--accent-soft);}
+
+.bub-c{
+  position:absolute; font-size:12.5px; font-weight:500; letter-spacing:.01em;
+  padding:6px 13px; border-radius:999px; white-space:nowrap;
+  background:var(--panel2); border:1px solid var(--accent); color:var(--accent);
+  box-shadow:0 4px 18px rgba(0,0,0,.5); opacity:0; transform:translate(-50%,-50%) scale(.6);
+  will-change:transform,opacity;
+}
+.bub-c.mem{border-color:var(--info); color:var(--info); background:var(--panel2);}
+.bub-c.in{animation:bubIn .5s cubic-bezier(.2,1.4,.4,1) forwards;}
+@keyframes bubIn{to{opacity:1; transform:translate(-50%,-50%) scale(1);}}
+
+#thinkCaption{
+  position:absolute; left:0; right:0; text-align:center; font-size:12px; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--dim); opacity:0; transition:opacity .5s ease;
+}
+#thinkCaption.on{opacity:1;}
+@media (prefers-reduced-motion:reduce){
+  .bub-c.in{animation:none; opacity:1; transform:translate(-50%,-50%) scale(1);}
+}
+
 /* ---------- prose reflection & follow-up chat ---------- */
 .reflection{font-size:15.5px; line-height:1.72; color:var(--fg2);}
 .reflection p{margin:0 0 14px;}
@@ -424,6 +464,12 @@ body.zen .zen-exit:hover{opacity:1;}
   <h2 class="sec">Habits &amp; how you felt</h2>
   <div class="card" id="habitCorrCard"></div>
 
+  <h2 class="sec">What it knows about you</h2>
+  <div class="card" id="profileCard"></div>
+
+  <h2 class="sec">Life lessons</h2>
+  <div class="card" id="lessonCard"></div>
+
   <h2 class="sec">Deep pattern report</h2>
   <div class="card" id="reportCard"></div>
 </section>
@@ -562,6 +608,8 @@ body.zen .zen-exit:hover{opacity:1;}
   <button data-v="settings"><span class="ic">⚙</span>Settings</button>
 </div></nav>
 
+<div id="thinkLayer" class="off"><div id="thinkMirror"></div><div id="thinkCaption"></div></div>
+
 <button class="zen-exit" id="zenExit" title="Leave focus mode (or just move the mouse)">done</button>
 
 <div class="toast" id="toast"></div>
@@ -594,6 +642,12 @@ function defaultState(){
     v: 1,
     entries: [],        // { id, date, text, mood, energy, tags[], createdAt, updatedAt, ai }
     reports: [],        // { id, createdAt, range, model, text }
+    /* What the model has come to understand about you, rebuilt from the whole
+       journal rather than one entry. Fed into every reflection. */
+    profile: { text: '', updatedAt: 0, model: '', entriesSeen: 0, history: [] },
+    /* Things you decided on purpose and want handed back when they apply.
+       { id, text, createdAt, timesUsed, lastUsed } */
+    lessons: [],
     prefs: {
       theme: 'dark',
       autoReflect: false,
@@ -621,6 +675,9 @@ function load(){
       state.meta  = Object.assign(defaultState().meta,  s.meta  || {});
       if (!Array.isArray(state.entries)) state.entries = [];
       if (!Array.isArray(state.reports)) state.reports = [];
+      if (!Array.isArray(state.lessons)) state.lessons = [];
+      state.profile = Object.assign(defaultState().profile, s.profile || {});
+      if (!Array.isArray(state.profile.history)) state.profile.history = [];
       state.entries.forEach(normalizeEntry);
     }
   }catch(e){ console.warn('load failed, starting fresh', e); }
@@ -994,6 +1051,72 @@ function personaLine(){
   return p ? '\n\nThe writer has asked you to keep this in mind: ' + p : '';
 }
 
+/* ---------- concept pass ----------
+   A fast structured call that names what the entry is carrying and, crucially,
+   quotes the exact phrase each concept came from. Two uses: it drives the
+   retrieval of older entries, and it is what the thinking animation shows —
+   so the bubbles on screen are real extracted concepts anchored to real spans
+   of your text, never decoration. */
+
+const CONCEPT_SCHEMA = {
+  type: 'object',
+  properties: {
+    concepts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          word:  { type: 'string' },
+          quote: { type: 'string' },
+        },
+        required: ['word', 'quote'],
+        additionalProperties: false,
+      },
+    },
+    echoes: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['concepts', 'echoes'],
+  additionalProperties: false,
+};
+
+const CONCEPT_SYSTEM =
+  'You are reading one journal entry and naming what is actually in it, for an interface that will ' +
+  'highlight those moments on screen.\n\n' +
+  'concepts: 4 to 7 of them. `word` is ONE lowercase word for what is present — an emotion, a force, ' +
+  'a stance ("fear", "longing", "duty", "relief", "avoidance", "pride"). Not a topic label like ' +
+  '"work" or "gym". `quote` MUST be a span of 3–12 words copied EXACTLY, character for character, ' +
+  'from the entry — the moment that concept surfaces. Do not paraphrase, correct or re-punctuate the ' +
+  'quote; it is used to locate the text on screen and will silently fail if altered. Pick a different ' +
+  'quote for each concept.\n\n' +
+  'echoes: 2 to 5 lowercase themes from the writer\'s past that this entry connects to, drawn from the ' +
+  'theme list you are given. Only ones that genuinely apply; an empty list is fine.';
+
+async function conceptPass(e){
+  const known = Array.from(new Set(state.entries.flatMap(x => (x.ai && x.ai.themes) || []))).slice(0, 40);
+  try{
+    const out = await callAI({
+      system: CONCEPT_SYSTEM,
+      messages: [{ role: 'user', content:
+        (known.length ? 'Themes they have written about before: ' + known.join(', ') + '\n\n' : '') +
+        'The entry:\n\n' + e.text }],
+      schema: CONCEPT_SCHEMA,
+      maxTokens: 6000,
+      effort: 'low',
+    });
+    if (!out || !Array.isArray(out.concepts)) return null;
+    // Keep only quotes that genuinely appear, so the highlighter cannot miss.
+    const hay = e.text;
+    out.concepts = out.concepts
+      .filter(c => c && c.word && c.quote && hay.indexOf(c.quote) !== -1)
+      .slice(0, 7);
+    out.echoes = (out.echoes || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5);
+    return out;
+  }catch(err){
+    console.warn('concept pass failed', err);
+    return null;      // never block the reflection on this
+  }
+}
+
 const ANALYSIS_SCHEMA = {
   type: 'object',
   properties: {
@@ -1084,6 +1207,149 @@ const ANALYSIS_SYSTEM =
   '- questions: 2–3 questions worth sitting with tomorrow. Open, specific to this entry, never generic.\n\n' +
   'Be plain-spoken. No therapy-speak, no "it sounds like", no bullet-point summaries of what they ' +
   'just wrote back at them.\n\n' + SAFETY_NOTE;
+
+/* ============================== THINKING ANIMATION ==============================
+   Mirrors the textarea so real spans can be highlighted, floats one bubble per
+   extracted concept off its own quote, drifts remembered themes in from the
+   side, and converges both on the panel where the reflection will land. */
+
+let thinkTimers = [];
+
+function thinkClear(){
+  thinkTimers.forEach(clearTimeout);
+  thinkTimers = [];
+  const layer = $('#thinkLayer');
+  if (!layer) return;
+  layer.classList.add('off');
+  $$('.bub-c', layer).forEach(b => b.remove());
+  $('#thinkMirror').innerHTML = '';
+  $('#thinkMirror').removeAttribute('style');
+  $('#thinkCaption').classList.remove('on');
+}
+function later(fn, ms){ thinkTimers.push(setTimeout(fn, ms)); }
+
+/* Lay a transparent copy of the entry over the textarea so the quoted spans
+   can be located and lit up. Returns a rect per concept. */
+function mirrorEntry(concepts){
+  const ed = $('#editor'), mirror = $('#thinkMirror');
+  if (!ed) return [];
+  const r = ed.getBoundingClientRect(), cs = getComputedStyle(ed);
+  ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','padding','textAlign']
+    .forEach(k => { mirror.style[k] = cs[k]; });
+  mirror.style.left = r.left + 'px';
+  mirror.style.top = r.top + 'px';
+  mirror.style.width = r.width + 'px';
+  mirror.style.height = r.height + 'px';
+
+  // Wrap each quote once, earliest first, without overlapping.
+  const text = ed.value;
+  const marks = [];
+  concepts.forEach(c => {
+    const i = text.indexOf(c.quote);
+    if (i === -1) return;
+    if (marks.some(m => i < m.end && i + c.quote.length > m.start)) return;  // no overlaps
+    marks.push({ start: i, end: i + c.quote.length, word: c.word });
+  });
+  marks.sort((a,b) => a.start - b.start);
+
+  let html = '', cursor = 0;
+  marks.forEach((m, idx) => {
+    html += esc(text.slice(cursor, m.start)) + '<mark data-i="' + idx + '">' + esc(text.slice(m.start, m.end)) + '</mark>';
+    cursor = m.end;
+  });
+  html += esc(text.slice(cursor));
+  mirror.innerHTML = html;
+  mirror.scrollTop = ed.scrollTop;
+
+  return marks.map((m, idx) => {
+    const el = mirror.querySelector('mark[data-i="' + idx + '"]');
+    const rect = el ? el.getBoundingClientRect() : null;
+    return { word: m.word, el: el, rect: rect };
+  }).filter(x => x.rect && x.rect.width);
+}
+
+function spawnBubble(word, x, y, isMemory){
+  const b = document.createElement('div');
+  b.className = 'bub-c' + (isMemory ? ' mem' : '');
+  b.textContent = word;
+  b.style.left = x + 'px';
+  b.style.top = y + 'px';
+  $('#thinkLayer').appendChild(b);
+  requestAnimationFrame(() => b.classList.add('in'));
+  return b;
+}
+
+function driftTo(b, x, y, ms, fade){
+  b.style.transition = 'transform ' + ms + 'ms cubic-bezier(.4,0,.2,1), opacity ' + ms + 'ms ease';
+  requestAnimationFrame(() => {
+    const cx = parseFloat(b.style.left), cy = parseFloat(b.style.top);
+    b.style.transform = 'translate(-50%,-50%) translate(' + (x - cx) + 'px,' + (y - cy) + 'px) scale(' +
+      (fade ? 0.75 : 1) + ')';
+    if (fade) b.style.opacity = '0';
+  });
+}
+
+/* `concepts` come from the entry, `echoes` from the journal. Returns a stop(). */
+function runThinking(concepts, echoes, targetSel){
+  thinkClear();
+  const layer = $('#thinkLayer');
+  layer.classList.remove('off');
+
+  const spots = mirrorEntry(concepts || []);
+  const cap = $('#thinkCaption');
+  const W = window.innerWidth, H = window.innerHeight;
+
+  // Where the reflection is about to appear — everything converges there.
+  const target = document.querySelector(targetSel);
+  const tr = target ? target.getBoundingClientRect() : null;
+  const meetX = W / 2;
+  const meetY = tr ? clamp(tr.top + 40, 120, H - 120) : H * 0.72;
+
+  cap.style.top = Math.max(70, meetY - 150) + 'px';
+  cap.textContent = 'reading what you wrote';
+  later(() => cap.classList.add('on'), 120);
+
+  const live = [];
+
+  // 1 — concepts rise off their own phrases.
+  spots.forEach((sp, i) => {
+    later(() => {
+      if (sp.el) sp.el.classList.add('lit');
+      const x = sp.rect.left + sp.rect.width / 2;
+      const y = sp.rect.top;
+      const b = spawnBubble(sp.word, x, y, false);
+      live.push(b);
+      later(() => driftTo(b, x + (Math.random() * 60 - 30), y - 58, 900, false), 60);
+    }, 350 + i * 420);
+  });
+
+  // 2 — remembered themes drift in from the edge.
+  const memStart = 350 + spots.length * 420 + 250;
+  later(() => { cap.textContent = 'remembering what rhymes with it'; }, memStart - 200);
+  (echoes || []).forEach((t, i) => {
+    later(() => {
+      const fromLeft = i % 2 === 0;
+      const x = fromLeft ? 30 : W - 30;
+      const y = meetY - 120 + (i * 34);
+      const b = spawnBubble(t, x, y, true);
+      live.push(b);
+      later(() => driftTo(b, fromLeft ? W * 0.34 : W * 0.66, y, 1100, false), 60);
+    }, memStart + i * 300);
+  });
+
+  // 3 — everything converges where the writing will appear.
+  const meetAt = memStart + (echoes || []).length * 300 + 700;
+  later(() => {
+    cap.textContent = 'putting it together';
+    $$('#thinkMirror mark').forEach(m => m.classList.remove('lit'));
+    live.forEach((b, i) => later(() => driftTo(b, meetX + (Math.random() * 90 - 45), meetY, 1000, true), i * 70));
+  }, meetAt);
+
+  later(() => cap.classList.remove('on'), meetAt + 900);
+  later(thinkClear, meetAt + 1700);
+
+  return thinkClear;
+}
 
 /* ============================== WRITE VIEW ============================== */
 
@@ -1353,12 +1619,19 @@ function renderAIOut(e){
 
   html += '<div class="editor-meta" style="margin-top:16px"><span>' + esc(a.model || '') +
           (a.moodEstimate ? ' · mood read ' + esc(a.moodEstimate) + '/10' : '') + ' · ' + when +
-          '</span><span class="spacer"></span><button class="btn sm ghost" id="redoAI">Redo</button></div>';
+          '</span><span class="spacer"></span>' +
+          '<button class="btn sm ghost" id="toLesson">Save a lesson</button>' +
+          '<button class="btn sm ghost" id="redoAI">Redo</button></div>';
   html += '</div>';
   host.innerHTML = html;
 
   const redo = $('#redoAI');
   if (redo) redo.onclick = () => reflect(true);
+  const tl = $('#toLesson');
+  if (tl) tl.onclick = () => {
+    const t = prompt('In your own words — what did you work out here that you do not want to relearn?');
+    if (t && t.trim()) addLesson(t);
+  };
   wireAsk();
 }
 
@@ -1371,11 +1644,124 @@ function wireAsk(){
 
 /* The entry, its context and the first reflection replayed as a real
    conversation, so a follow-up continues the thread rather than starting over. */
+/* ============================== MEMORY ==============================
+   Three layers feed a reflection, in ascending order of durability:
+
+     recent   — the last 12 days in full, because context is mostly local
+     echoes   — older entries pulled in only when today rhymes with them
+     standing — the profile the model maintains about you, and the lessons
+                you wrote on purpose
+
+   The echo layer is the hybrid: without it a reflection in November cannot
+   reach March; with everything it drowns today under a year of one-liners. */
+
+const RECENT_N = 12;
+const ECHO_N   = 8;
+
+const STOPWORDS = new Set(('the a an and or but if then than that this these those i me my mine you your it its of to in on at for with from as is was are were be been being do did does have has had not no so just really very much more most some any all it\'s im ive dont didnt cant wont about out up down over under again what when where who how why can could would should will now today yesterday tomorrow day days time got get go went going like feel felt feeling thing things').split(' '));
+
+function salientTerms(text, n){
+  const freq = {};
+  String(text).toLowerCase().replace(/[^a-z\s']/g, ' ').split(/\s+/).forEach(w => {
+    if (w.length < 4 || STOPWORDS.has(w)) return;
+    freq[w] = (freq[w] || 0) + 1;
+  });
+  return Object.keys(freq).sort((a,b) => freq[b] - freq[a]).slice(0, n || 12);
+}
+
+/* Older entries worth reaching back for. Scored on overlap between today's
+   language (plus any concepts the concept pass found) and the themes and
+   summaries already stored on each past entry. Local, instant, free. */
+function findEchoes(e, concepts){
+  const recentIds = new Set(state.entries
+    .filter(x => x.id !== e.id && x.ai)
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .slice(0, RECENT_N)
+    .map(x => x.id));
+
+  const terms = new Set(salientTerms(e.text, 14).concat((concepts || []).map(c => String(c).toLowerCase())));
+  if (!terms.size) return [];
+
+  const scored = state.entries
+    .filter(x => x.id !== e.id && x.ai && !recentIds.has(x.id) && x.text.trim())
+    .map(x => {
+      const hay = ((x.ai.summary || '') + ' ' + (x.ai.themes || []).join(' ') + ' ' +
+                   (x.ai.emotions || []).join(' ') + ' ' + x.text).toLowerCase();
+      let score = 0;
+      terms.forEach(t => { if (hay.includes(t)) score += (x.ai.themes || []).join(' ').includes(t) ? 2 : 1; });
+      return { entry: x, score: score };
+    })
+    .filter(r => r.score > 1)
+    .sort((a,b) => b.score - a.score || b.entry.date.localeCompare(a.entry.date))
+    .slice(0, ECHO_N);
+
+  return scored;
+}
+
+/* A month-by-month skeleton of everything older, so the model knows the shape
+   of the stretch it is NOT being shown in detail. Cheap — one line a month. */
+function olderDigest(e){
+  const cutoff = state.entries
+    .filter(x => x.id !== e.id && x.ai)
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .slice(0, RECENT_N)
+    .map(x => x.date).pop();
+  const older = state.entries.filter(x => x.ai && x.text.trim() && (!cutoff || x.date < cutoff));
+  if (older.length < 8) return '';
+
+  const months = {};
+  older.forEach(x => {
+    const m = x.date.slice(0, 7);
+    const b = months[m] = months[m] || { n: 0, moods: [], themes: {} };
+    b.n++;
+    const mood = x.mood || (x.ai && x.ai.moodEstimate);
+    if (Number.isFinite(mood)) b.moods.push(mood);
+    (x.ai.themes || []).forEach(t => { b.themes[t] = (b.themes[t] || 0) + 1; });
+  });
+
+  const lines = Object.keys(months).sort().map(m => {
+    const b = months[m];
+    const top = Object.keys(b.themes).sort((x,y) => b.themes[y] - b.themes[x]).slice(0, 4);
+    return m + ': ' + b.n + ' entries' +
+      (b.moods.length ? ', avg mood ' + round1(mean(b.moods)) + '/10' : '') +
+      (top.length ? ', mostly ' + top.join(', ') : '');
+  });
+  return 'THE SHAPE OF EVERYTHING EARLIER (one line per month, not shown in detail):\n' + lines.join('\n');
+}
+
+/* The standing memory: what the model has concluded about you over time, plus
+   the lessons you wrote deliberately. Both go into every conversation. */
+function standingMemory(){
+  let out = '';
+  const p = state.profile;
+  if (p && p.text && p.text.trim()){
+    out += 'WHAT YOU HAVE LEARNED ABOUT THIS PERSON SO FAR\n' +
+      '(your own notes, built from their whole journal as of ' +
+      (p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : 'earlier') + ' — ' +
+      'treat as working hypotheses, and contradict them if today disagrees)\n' + p.text.trim() + '\n\n';
+  }
+  if (state.lessons && state.lessons.length){
+    out += 'LIFE LESSONS THEY WROTE DOWN ON PURPOSE\n' +
+      'These are their own conclusions, in their own words. Bring one up ONLY when today genuinely ' +
+      'touches it — quote it back and say which. Never recite the list, and never force a fit.\n' +
+      state.lessons.map(l => '- [' + l.id + '] ' + l.text).join('\n') + '\n\n';
+  }
+  return out;
+}
+
+function echoBlock(echoes){
+  if (!echoes || !echoes.length) return '';
+  return 'OLDER ENTRIES THAT RHYME WITH TODAY (pulled because today\'s language matches them; ' +
+    'mention one only if it genuinely connects)\n' +
+    echoes.map(r => r.entry.date + ' (mood ' + (r.entry.mood || r.entry.ai.moodEstimate || '?') + '/10): ' +
+      (r.entry.ai.summary || '') + ' [themes: ' + (r.entry.ai.themes || []).join(', ') + ']').join('\n') + '\n\n';
+}
+
 function entryContextMessage(e){
   const recent = state.entries
     .filter(x => x.id !== e.id && x.ai && x.text.trim())
     .sort((a,b) => b.date.localeCompare(a.date))
-    .slice(0, 12)
+    .slice(0, RECENT_N)
     .map(x => x.date + ' (mood ' + (x.mood || x.ai.moodEstimate || '?') + '/10): ' + (x.ai.summary || '') +
               ' [themes: ' + (x.ai.themes || []).join(', ') + ']')
     .reverse();
@@ -1386,7 +1772,14 @@ function entryContextMessage(e){
       hab.completed.map(c => c.name).join(', ') + '.'
     : '';
 
-  return (recent.length ? 'For context, their recent entries:\n' + recent.join('\n') + '\n\n---\n\n' : '') +
+  const echoes = echoBlock(e.__echoes);
+  const digest = olderDigest(e);
+
+  return standingMemory() +
+    (recent.length ? 'THEIR LAST TWO WEEKS\n' + recent.join('\n') + '\n\n' : '') +
+    echoes +
+    (digest ? digest + '\n\n' : '') +
+    '---\n\n' +
     'Today is ' + longDate(e.date) + '.' +
     (e.mood ? ' They rated the day ' + e.mood + '/10 for mood' + (e.energy ? ' and ' + e.energy + '/10 for energy' : '') + '.' : '') +
     habLine +
@@ -1424,7 +1817,10 @@ async function askFollowUp(){
       messages: msgs,
       maxTokens: 16000,
       effort: 'high',
-      onDelta: partial => { bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+      onDelta: partial => {
+        if (partial && partial.length > 40) thinkClear();
+        bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>';
+      },
     });
     if (!reply || !reply.trim()) throw new Error('Empty reply — try again.');
     e.ai.thread.push({ role: 'assistant', content: reply });
@@ -1446,7 +1842,6 @@ async function reflect(force){
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Reading…';
 
-  const user = entryContextMessage(e);
   const cfg = depthCfg();
   const model = loadAI().model || MODEL_DEFAULTS[loadAI().provider];
 
@@ -1456,6 +1851,17 @@ async function reflect(force){
   $('#aiOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
   const target = $('#reflectionProse');
 
+  // Name what is in the entry first: it decides which older entries get pulled
+  // in, and it is what the animation shows while the reflection is being written.
+  const cp = await conceptPass(e);
+  e.__echoes = findEchoes(e, cp ? cp.concepts.map(c => c.word) : []);
+  if (cp && cp.concepts.length){
+    const echoWords = (cp.echoes || []).concat(e.__echoes.map(r => (r.entry.ai.themes || [])[0]).filter(Boolean));
+    runThinking(cp.concepts, Array.from(new Set(echoWords)).slice(0, 5), '#aiOut');
+  }
+
+  const user = entryContextMessage(e);
+
   // The prose the writer reads, and the tagging the charts need, are different
   // jobs with different shapes — so they run as two calls, side by side.
   const prosePromise = streamAI({
@@ -1463,7 +1869,10 @@ async function reflect(force){
     messages: [{ role: 'user', content: user }],
     maxTokens: cfg.max,
     effort: cfg.effort,
-    onDelta: partial => { target.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+    onDelta: partial => {
+      if (partial && partial.length > 40) thinkClear();   // the writing has arrived
+      target.innerHTML = mdToHtml(partial) + '<span class="caret"></span>';
+    },
   });
   const metaPromise = callAI({
     system: ANALYSIS_SYSTEM + personaLine(),
@@ -1506,6 +1915,7 @@ async function reflect(force){
     toast(err.message || 'Reflection failed', true);
     renderAIOut(e);
   }finally{
+    thinkClear();
     btn.disabled = false;
     btn.textContent = '✦ Reflect on this entry';
   }
@@ -1557,8 +1967,10 @@ function museContext(e){
   const draft = e.text.trim();
   const hab = habitData.days[e.date];
 
-  return 'Today is ' + longDate(e.date) + '.\n\n' +
+  return standingMemory() +
+    'Today is ' + longDate(e.date) + '.\n\n' +
     (recent.length ? 'What they have been writing lately:\n' + recent.join('\n') + '\n\n' : 'They have not written much yet.\n\n') +
+    echoBlock(e.__echoes) +
     (hab && hab.completed.length ? 'What they got done today, from their habit tracker: ' +
       hab.completed.map(c => c.name).join(', ') + '.\n\n' : '') +
     (draft
@@ -1621,7 +2033,10 @@ async function museTurn(e, seed){
       messages: msgs,
       maxTokens: 16000,
       effort: 'high',
-      onDelta: partial => { bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+      onDelta: partial => {
+        if (partial && partial.length > 40) thinkClear();
+        bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>';
+      },
     });
     if (!reply || !reply.trim()) throw new Error('Empty reply — try again.');
     e.muse.push({ role: 'assistant', content: reply });
@@ -1685,9 +2100,20 @@ async function promptMe(){
   $('#museOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try{
+    if (words(e.text) >= 15){
+      const cp = await conceptPass(e);
+      e.__echoes = findEchoes(e, cp ? cp.concepts.map(c => c.word) : []);
+      if (cp && cp.concepts.length){
+        const echoWords = (cp.echoes || []).concat(e.__echoes.map(r => (r.entry.ai.themes || [])[0]).filter(Boolean));
+        runThinking(cp.concepts, Array.from(new Set(echoWords)).slice(0, 5), '#museOut');
+      }
+    } else {
+      e.__echoes = findEchoes(e, []);
+    }
     await museTurn(e, true);
     const box = $('#museBox'); if (box) box.focus();
   }finally{
+    thinkClear();
     btn.disabled = false;
     btn.textContent = '✦ Talk it through';
   }
@@ -1955,6 +2381,154 @@ function renderEntryList(){
 
 let corrLag = 0;
 
+/* ============================== PROFILE & LESSONS ==============================
+   The profile is the model's standing understanding of you, rebuilt from the
+   whole journal and carried into every reflection. Lessons are the opposite
+   direction: things you concluded yourself and want handed back on the day
+   they apply. */
+
+const PROFILE_SYSTEM =
+  'You keep an evolving set of notes about one person, built from their journal. These notes are ' +
+  'loaded into every future conversation with them, so they must be genuinely useful rather than ' +
+  'flattering or vague.\n\n' +
+  'Write the notes as plain prose under these markdown "## " headings:\n' +
+  '## How they think — recurring moves of mind. What they reliably do when under pressure, when ' +
+  'avoiding something, when things go well. Name mechanisms, not traits.\n' +
+  '## What actually moves them — what reliably lifts or sinks them, with the evidence. Include the ' +
+  'habit-vs-mood numbers when they support it, and say plainly when something they believe helps ' +
+  'does not show up in the data.\n' +
+  '## Recurring loops — the specific cycles that repeat, with dates. The resolution that keeps ' +
+  'getting remade. The situation that keeps producing the same feeling.\n' +
+  '## Language they use — phrases they reach for repeatedly, and what those phrases seem to be doing.\n' +
+  '## Open questions — what you still cannot tell about them, and what would settle it.\n\n' +
+  'Rules: second person. Concrete and falsifiable — a note that could describe anyone is worthless. ' +
+  'Cite dates. If a previous version of these notes is provided, revise it: keep what still holds, ' +
+  'change your mind where the evidence moved, and say so explicitly ("earlier I thought X; the last ' +
+  'six weeks say otherwise"). Do not pad to fill a heading — "not enough evidence yet" is a real ' +
+  'answer. Around 500-800 words.\n\n' + SAFETY_NOTE;
+
+async function buildProfile(){
+  if (!aiReady()){ toast('Add an API key in Settings first', true); return; }
+  const corpus = buildReportCorpus(0);
+  if (corpus.dates < 5){ toast('Needs at least 5 days of entries', true); return; }
+
+  const host = $('#profileCard');
+  if (host) host.innerHTML = '<div class="report" id="profileStream"><p class="hint">' +
+    '<span class="spin"></span> Reading all ' + corpus.dates + ' days…</p></div>';
+  const target = $('#profileStream');
+
+  const prev = state.profile && state.profile.text ? state.profile.text : '';
+  try{
+    const text = await streamAI({
+      system: PROFILE_SYSTEM + personaLine(),
+      messages: [{ role: 'user', content:
+        (prev ? 'YOUR PREVIOUS NOTES (revise these; do not start over)\n' + prev + '\n\n---\n\n' : '') +
+        corpus.text + '\n\nWrite the notes. Today is ' + longDate(todayStr()) + '.' }],
+      maxTokens: 32000,
+      effort: 'high',
+      onDelta: partial => { if (target) target.innerHTML = mdToHtml(partial); },
+    });
+    if (!text || !text.trim()) throw new Error('Empty response — try again.');
+    if (state.profile.text){
+      state.profile.history.push({ text: state.profile.text, updatedAt: state.profile.updatedAt });
+      if (state.profile.history.length > 6) state.profile.history = state.profile.history.slice(-6);
+    }
+    state.profile.text = text;
+    state.profile.updatedAt = Date.now();
+    state.profile.model = loadAI().model || MODEL_DEFAULTS[loadAI().provider];
+    state.profile.entriesSeen = corpus.dates;
+    save();
+    renderProfile();
+    toast('Notes updated');
+  }catch(err){
+    toast(err.message || 'Could not build the notes', true);
+    renderProfile();
+  }
+}
+
+function renderProfile(){
+  const host = $('#profileCard');
+  if (!host) return;
+  const p = state.profile;
+  let html = '';
+  if (p && p.text){
+    html += '<div class="report">' + mdToHtml(p.text) + '</div>' +
+      '<div class="editor-meta" style="margin-top:18px"><span>' + esc(p.model || '') + ' · ' +
+      new Date(p.updatedAt).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) +
+      ' · from ' + p.entriesSeen + ' days</span></div>';
+  } else {
+    html += '<p class="hint" style="margin:0 0 14px">Notes the model keeps about how you think, ' +
+      'rebuilt from your whole journal and carried into every reflection — so it stops meeting you cold ' +
+      'each time. Revised rather than rewritten, and it will say when it changes its mind.</p>';
+  }
+  html += '<div class="btn-row" style="margin-top:14px">' +
+    '<button class="btn primary" id="genProfile">' + (p && p.text ? 'Update the notes' : '✦ Build my notes') + '</button>' +
+    (p && p.text ? '<button class="btn ghost sm" id="editProfile">Edit</button>' : '') +
+    (p && p.history && p.history.length ? '<button class="btn ghost sm" id="prevProfile">Previous (' + p.history.length + ')</button>' : '') +
+    '</div>';
+  host.innerHTML = html;
+
+  $('#genProfile').onclick = buildProfile;
+  const ed = $('#editProfile');
+  if (ed) ed.onclick = () => {
+    const t = prompt('Edit the notes — anything you correct here is what future reflections read:', state.profile.text);
+    if (t === null) return;
+    state.profile.text = t; state.profile.updatedAt = Date.now(); save(); renderProfile();
+  };
+  const pv = $('#prevProfile');
+  if (pv) pv.onclick = () => {
+    host.insertAdjacentHTML('beforeend', '<div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">' +
+      state.profile.history.slice().reverse().map(h =>
+        '<div style="margin-bottom:20px"><div style="font-size:11px;color:var(--dim);margin-bottom:8px">' +
+        new Date(h.updatedAt).toLocaleDateString() + '</div><div class="report">' + mdToHtml(h.text) + '</div></div>').join('') +
+      '</div>');
+    pv.remove();
+  };
+}
+
+/* ---------- lessons ---------- */
+
+function addLesson(text){
+  const t = String(text || '').trim();
+  if (!t) return;
+  state.lessons.push({ id: 'L' + (state.lessons.length + 1), text: t, createdAt: Date.now(), timesUsed: 0 });
+  save();
+  renderLessons();
+  toast('Saved');
+}
+
+function renderLessons(){
+  const host = $('#lessonCard');
+  if (!host) return;
+  let html = '<p class="hint" style="margin:0 0 14px">Things you worked out and do not want to relearn. ' +
+    'These go into every reflection and every conversation, and get quoted back to you on the days they ' +
+    'actually apply — not recited at you.</p>';
+
+  if (state.lessons.length){
+    html += '<div style="margin-bottom:14px">' + state.lessons.map(l =>
+      '<div class="distortion" style="border-left-color:var(--good)">' +
+        '<div class="rf">' + esc(l.text) + '</div>' +
+        '<div class="cm" style="margin-top:7px;font-size:11.5px;color:var(--faint)">' +
+          new Date(l.createdAt).toLocaleDateString() +
+          '<button class="btn sm ghost" style="float:right;padding:2px 8px;font-size:11px" data-del="' + esc(l.id) + '">remove</button>' +
+        '</div>' +
+      '</div>').join('') + '</div>';
+  }
+  html += '<div class="ask"><textarea id="lessonBox" rows="2" placeholder="e.g. When I am dreading something, the dread is always worse than the task. Start it for ten minutes."></textarea>' +
+    '<button class="btn primary" id="lessonAdd">Save</button></div>';
+  host.innerHTML = html;
+
+  autoGrow($('#lessonBox'), () => addLesson($('#lessonBox').value));
+  $('#lessonAdd').onclick = () => { addLesson($('#lessonBox').value); };
+  $$('button[data-del]', host).forEach(b => {
+    b.onclick = () => {
+      if (!confirm('Remove this lesson?')) return;
+      state.lessons = state.lessons.filter(l => l.id !== b.dataset.del);
+      save(); renderLessons();
+    };
+  });
+}
+
 function renderPatterns(){
   const days = state.prefs.lastRange;
   renderPatternStats(days);
@@ -1962,6 +2536,8 @@ function renderPatterns(){
   renderThemes(days);
   renderRhythm(days);
   renderHabitCorr(days);
+  renderProfile();
+  renderLessons();
   renderReport();
 }
 
@@ -2508,6 +3084,15 @@ function mergeRemote(remote){
   });
   const reportIds = new Set(state.reports.map(r => r.id));
   (remote.reports || []).forEach(r => { if (!reportIds.has(r.id)) state.reports.push(r); });
+  // Newest profile wins; lessons union by text so neither device loses one.
+  if (remote.profile && (remote.profile.updatedAt || 0) > (state.profile.updatedAt || 0)){
+    state.profile = Object.assign(defaultState().profile, remote.profile);
+    added++;
+  }
+  if (Array.isArray(remote.lessons)){
+    const have = new Set(state.lessons.map(l => l.text.trim()));
+    remote.lessons.forEach(l => { if (l && l.text && !have.has(l.text.trim())){ state.lessons.push(l); added++; } });
+  }
   if (added || updated){
     save();
     renderAll();
@@ -2519,7 +3104,8 @@ async function cloudPush(){
   if (!fb) return;
   try{
     await fb.mod.setDoc(fbDoc(), {
-      payload: JSON.stringify({ v: state.v, entries: state.entries, reports: state.reports }),
+      payload: JSON.stringify({ v: state.v, entries: state.entries, reports: state.reports,
+                                profile: state.profile, lessons: state.lessons }),
       updatedAt: Date.now(),
       device: navigator.userAgent.slice(0, 80),
     });

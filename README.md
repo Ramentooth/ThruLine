@@ -66,6 +66,48 @@ Habit Casino is ever hosted there too, Throughline can read
 browser" button and you never have to export a file. On different domains,
 export from Habit Casino (Settings → Export) and import the JSON here.
 
+## Memory
+
+Three layers reach a reflection, in ascending durability:
+
+| Layer | What | Cost |
+|---|---|---|
+| **Recent** | last 12 days in full — context is mostly local | ~500 tokens |
+| **Echoes** | older entries pulled in *only* when today's language matches them (`findEchoes`, local term overlap — no embeddings), plus a one-line-per-month skeleton of everything else | ~450 tokens |
+| **Standing** | the profile the model keeps about you, and the lessons you wrote | grows slowly |
+
+The echo layer is why a reflection in November can reach March. Sending the
+whole corpus would also fit — five years is only ~81K tokens — but it buries
+today under a year of one-liners; this keeps recall without the dilution.
+
+**What it knows about you** (Patterns tab) is a set of notes the model maintains
+about how you think, rebuilt from the whole journal and loaded into every
+conversation. It *revises* rather than rewrites, is told to say when it changes
+its mind, keeps its last 6 versions, and is editable — anything you correct is
+what future reflections read.
+
+**Life lessons** are the opposite direction: conclusions you wrote deliberately.
+They go into every call with an instruction to quote one back only when the day
+genuinely touches it, never to recite the list. "Save a lesson" sits on every
+reflection, where you tend to have the thought.
+
+## The thinking animation
+
+Before a reflection, a fast low-effort `conceptPass` returns 4–7 concepts, each
+with **the exact phrase in your entry it came from**, plus which past themes it
+echoes. Quotes that don't appear verbatim are dropped, so a highlight can never
+land on the wrong text.
+
+The animation renders that: a transparent mirror of the textarea (a textarea
+can't style its own contents) lights up each quoted span, a bubble rises off it,
+remembered themes drift in from the edges, and both converge where the
+reflection is about to appear. It clears the moment real prose starts arriving.
+
+Every bubble is something actually sent to the model. It is not a decorative
+loader — the model's real chain of thought is never returned by the API, so
+animating "its thinking" would be fiction. This animates the *inputs*, which are
+real, and it covers latency the concept pass genuinely creates.
+
 ## Focus mode
 
 Start typing and the app fades out — header, mood scales, panels, buttons and
