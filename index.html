@@ -509,16 +509,21 @@ body.zen .zen-exit:hover{opacity:1;}
       <button class="btn sm" id="fbBtn">Set up</button>
     </div>
     <div id="fbPanel" hidden style="margin-top:12px; border-top:1px solid var(--line); padding-top:12px">
-      <label class="fld">
-        <span>Firebase config — paste the object from your Firebase console</span>
-        <textarea id="fbConfig" rows="6" placeholder='{ "apiKey": "…", "authDomain": "…", "projectId": "…", "appId": "…" }'></textarea>
-      </label>
+      <p class="hint" id="fbBaked" hidden style="margin:0 0 12px"></p>
       <div class="btn-row">
-        <button class="btn sm primary" id="fbConnect">Connect &amp; sign in</button>
+        <button class="btn sm primary" id="fbConnect">Sign in with Google</button>
         <button class="btn sm" id="fbSyncNow" hidden>Sync now</button>
-        <button class="btn sm danger" id="fbOff" hidden>Turn off</button>
+        <button class="btn sm danger" id="fbOff" hidden>Sign out</button>
       </div>
       <p class="hint" id="fbStatus"></p>
+      <details class="disc" id="fbAdvanced">
+        <summary>Use a different Firebase project</summary>
+        <label class="fld" style="margin:10px 0 0">
+          <span>Config object from your Firebase console — overrides the built-in one on this device only</span>
+          <textarea id="fbConfig" rows="6" placeholder='{ "apiKey": "…", "authDomain": "…", "projectId": "…", "appId": "…" }'></textarea>
+        </label>
+        <div class="btn-row"><button class="btn sm" id="fbUseCustom">Use this config</button></div>
+      </details>
     </div>
   </div>
 
@@ -2387,11 +2392,45 @@ function pickFile(cb){
    Entirely optional and configured by you. Loaded from the CDN only when you
    switch it on, so the app still opens and works with no network at all. */
 
+/* ---------------------------------------------------------------------------
+   PASTE YOUR FIREBASE CONFIG HERE, ONCE.
+
+   These four values are public identifiers, not secrets — Firebase is designed
+   for them to ship inside client-side JavaScript, and Google documents them as
+   safe to expose. What actually protects the data is the Firestore rules
+   (firestore.rules: each user can only touch their own document) plus the
+   authorized-domains list in Firebase Auth.
+
+   Because it lives in the file, every device already has it on load and the
+   only per-device step is signing in with Google. Leave it blank to fall back
+   to pasting a config per device under Settings → Firebase sync.
+
+   NOTE: this file is in a PUBLIC repo, so anyone can read the config and sign
+   into the project with their own Google account. They cannot read your journal
+   — the rules forbid it — but they could create their own document and spend
+   your quota. Pin the rules to your own uid to shut that down; see the README.
+   --------------------------------------------------------------------------- */
+const FB_CONFIG = {
+  // apiKey:     '',
+  // authDomain: '',
+  // projectId:  '',
+  // appId:      '',
+};
+
 const FB_KEY = 'throughline.fb';
 let fb = null;            // { app, auth, db, uid }
 let pushTimer = null;
 
-function loadFB(){ try{ return JSON.parse(localStorage.getItem(FB_KEY) || 'null'); }catch(e){ return null; } }
+function bakedFB(){ return FB_CONFIG && FB_CONFIG.projectId && FB_CONFIG.apiKey ? FB_CONFIG : null; }
+
+/* A per-device override wins if one was pasted; otherwise the built-in config. */
+function loadFB(){
+  try{
+    const custom = JSON.parse(localStorage.getItem(FB_KEY) || 'null');
+    if (custom && custom.projectId) return custom;
+  }catch(e){}
+  return bakedFB();
+}
 function saveFB(v){ try{ v ? localStorage.setItem(FB_KEY, JSON.stringify(v)) : localStorage.removeItem(FB_KEY); }catch(e){} }
 
 async function fbConnect(cfg, interactive){
@@ -2411,10 +2450,29 @@ async function fbConnect(cfg, interactive){
         const un = authMod.onAuthStateChanged(auth, u => { un(); res(u); });
       });
     }
+    // Coming back from a redirect sign-in, the result arrives on this load.
+    if (!user){
+      try{
+        const redir = await authMod.getRedirectResult(auth);
+        if (redir && redir.user) user = redir.user;
+      }catch(e){ /* no redirect in flight */ }
+    }
     if (!user){
       if (!interactive) return null;
-      const cred = await authMod.signInWithPopup(auth, new authMod.GoogleAuthProvider());
-      user = cred.user;
+      const provider = new authMod.GoogleAuthProvider();
+      try{
+        const cred = await authMod.signInWithPopup(auth, provider);
+        user = cred.user;
+      }catch(err){
+        // iOS Safari blocks popups aggressively; fall back to a full redirect,
+        // which navigates away and completes on the next load.
+        const code = (err && err.code) || '';
+        if (/popup-blocked|popup-closed-by-user|cancelled-popup-request|operation-not-supported/.test(code)){
+          await authMod.signInWithRedirect(auth, provider);
+          return null;
+        }
+        throw err;
+      }
     }
   }
   fb = { app: app, auth: auth, db: db, mod: dbMod, uid: user.uid, email: user.email || '' };
@@ -2473,6 +2531,42 @@ function scheduleCloudPush(){
   clearTimeout(pushTimer);
   pushTimer = setTimeout(cloudPush, 4000);
 }
+function renderFbPanel(){
+  const cfg = loadFB(), baked = bakedFB();
+  const custom = cfg && baked && cfg.projectId !== baked.projectId;
+  const note = $('#fbBaked');
+  if (cfg){
+    note.hidden = false;
+    note.innerHTML = 'Project <strong>' + esc(cfg.projectId) + '</strong>' +
+      (custom ? ' (this device only)' : ' — built into the app, so every device just signs in') + '.';
+  } else {
+    note.hidden = false;
+    note.textContent = 'No Firebase project configured yet.';
+  }
+  $('#fbConnect').hidden = !!fb;
+  $('#fbSyncNow').hidden = !fb;
+  $('#fbOff').hidden = !fb;
+  const box = $('#fbConfig');
+  if (box && !box.value && cfg) box.value = JSON.stringify(cfg, null, 2);
+}
+
+/* Auth failures are nearly always one of two setup steps being missed. */
+function fbError(e){
+  const code = (e && e.code) || '';
+  if (code === 'auth/unauthorized-domain'){
+    return 'This domain is not authorized. Add ' + location.hostname +
+           ' in Firebase console → Authentication → Settings → Authorized domains.';
+  }
+  if (code === 'auth/operation-not-allowed'){
+    return 'Google sign-in is not enabled. Firebase console → Authentication → Sign-in method → Google → Enable.';
+  }
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'){
+    return 'Sign-in was cancelled.';
+  }
+  if (/permission-denied/.test(code)) return 'Signed in, but the Firestore rules rejected the write. Deploy firestore.rules.';
+  return (e && e.message) || String(e);
+}
+
 function fbStatus(msg, isErr){
   const el = $('#fbStatus');
   if (el){ el.textContent = msg; el.style.color = isErr ? 'var(--bad)' : 'var(--dim)'; }
@@ -2483,6 +2577,8 @@ function fbStatus(msg, isErr){
 async function fbAutoConnect(){
   const cfg = loadFB();
   if (!cfg) return;
+  const sub = $('#fbSub');
+  if (sub) sub.textContent = 'Signed out — sign in to sync this device';
   try{
     const ok = await fbConnect(cfg, false);
     if (!ok){ fbStatus('Signed out — open Settings to sign back in'); return; }
@@ -2490,7 +2586,7 @@ async function fbAutoConnect(){
     fbStatus('Connected as ' + (fb.email || fb.uid.slice(0, 8)));
     await cloudPull();
   }catch(e){
-    fbStatus('Could not connect: ' + (e.message || e), true);
+    fbStatus('Could not connect: ' + fbError(e), true);
   }
 }
 
@@ -2603,34 +2699,52 @@ function wireSettings(){
   $('#fbBtn').onclick = () => {
     const p = $('#fbPanel');
     p.hidden = !p.hidden;
-    if (!p.hidden){
-      const cfg = loadFB();
-      if (cfg) $('#fbConfig').value = JSON.stringify(cfg, null, 2);
-      $('#fbSyncNow').hidden = !fb; $('#fbOff').hidden = !fb;
-    }
+    if (!p.hidden) renderFbPanel();
   };
+
+  /* Sign in using whichever config is in force — built-in unless this device
+     has an override. No pasting required on a device that loads the app. */
   $('#fbConnect').onclick = async () => {
+    const cfg = loadFB();
+    if (!cfg){
+      fbStatus('No Firebase config yet. Add one under “Use a different Firebase project”, or bake FB_CONFIG into index.html.', true);
+      $('#fbAdvanced').open = true;
+      return;
+    }
+    fbStatus('Opening Google sign-in…');
+    try{
+      const ok = await fbConnect(cfg, true);
+      if (!ok){ fbStatus('Redirecting to Google…'); return; }   // redirect path: page navigates away
+      $('#fbSyncNow').hidden = false; $('#fbOff').hidden = false;
+      fbStatus('Signed in as ' + (fb.email || fb.uid.slice(0, 8)) + ' — pulling…');
+      await cloudPull();
+      await cloudPush();
+      renderFbPanel();
+    }catch(e){ fbStatus(fbError(e), true); }
+  };
+
+  $('#fbUseCustom').onclick = async () => {
     let cfg;
     try{
       const raw = $('#fbConfig').value.trim().replace(/^const\s+\w+\s*=\s*/, '').replace(/;$/, '');
       cfg = JSON.parse(raw);
-    }catch(e){ fbStatus('That config is not valid JSON — quote the keys.', true); return; }
-    fbStatus('Connecting…');
-    try{
-      await fbConnect(cfg, true);
-      saveFB(cfg);
-      $('#fbSyncNow').hidden = false; $('#fbOff').hidden = false;
-      fbStatus('Connected as ' + (fb.email || fb.uid.slice(0, 8)) + ' — pulling…');
-      await cloudPull();
-      await cloudPush();
-    }catch(e){ fbStatus('Failed: ' + (e.message || e), true); }
+      if (!cfg.projectId || !cfg.apiKey) throw new Error('missing projectId or apiKey');
+    }catch(e){ fbStatus('That config is not valid JSON — quote the keys. (' + (e.message||e) + ')', true); return; }
+    saveFB(cfg);
+    fbStatus('Saved for this device. Now hit “Sign in with Google”.');
+    renderFbPanel();
   };
   $('#fbSyncNow').onclick = async () => { fbStatus('Syncing…'); await cloudPull(); await cloudPush(); };
-  $('#fbOff').onclick = () => {
-    saveFB(null); fb = null;
+  $('#fbOff').onclick = async () => {
+    // Sign out of this device only — the config stays, so signing back in is
+    // one tap. Clearing a per-device override is what the advanced box is for.
+    try{ if (fb) await fb.auth.signOut(); }catch(e){}
+    fb = null;
     $('#fbSyncNow').hidden = true; $('#fbOff').hidden = true;
-    $('#fbSub').textContent = 'Off — set up to sync across your devices';
-    fbStatus('Sync off. Your entries stay on this device.');
+    $('#fbSub').textContent = bakedFB() ? 'Signed out — sign in to sync this device'
+                                        : 'Off — set up to sync across your devices';
+    fbStatus('Signed out. Your entries stay on this device.');
+    renderFbPanel();
   };
 
   $('#wipeBtn').onclick = () => {
