@@ -177,9 +177,10 @@ Deploy hosting and rules with:
 
 ```bash
 firebase deploy
-``` Entries merge per-entry by
-`updatedAt`, so writing on your phone and then your laptop never silently drops
-one of them.
+```
+
+Entries merge per-entry by `updatedAt`, so writing on your phone and then your
+laptop never silently drops one of them.
 
 You need two things enabled in the Firebase console:
 
@@ -195,9 +196,10 @@ also a legitimate way to run it — just export a backup now and then.
 The `<script>` is banner-commented in this order:
 
 ```
-DATA MODEL · HELPERS · AI · WRITE VIEW · ANALYTICS · CHARTS
-ENTRIES VIEW · PATTERNS VIEW · HABIT CASINO · FIREBASE SYNC
-SETTINGS · ROUTING & INIT
+DATA MODEL · HELPERS · AI · THINKING ANIMATION · WRITE VIEW
+MEMORY · ANALYTICS · CHARTS · ENTRIES VIEW · PATTERNS VIEW
+PROFILE & LESSONS · HABIT CASINO · FIREBASE SYNC · SETTINGS
+FOCUS MODE · ROUTING & INIT
 ```
 
 Storage keys:
