@@ -8,63 +8,59 @@ server of mine. Your entries live in your browser; the only outbound calls are
 to the AI provider you configure and (if you switch it on) your own Firebase
 project.
 
-**Live at https://thruline-a12e4.web.app** (Firebase Hosting, primary)
-**Also at https://ramentooth.github.io/ThruLine/** (GitHub Pages)
+**Live at https://thruline-a12e4.web.app** — Firebase Hosting, the only host.
 
-Firebase Hosting is the better address of the two: its domains are authorized
-for Firebase Auth automatically, so Google sign-in works there with no extra
-setup. Any other origin — the Pages URL, a Tailscale name — has to be added by
-hand under Authentication → Settings → Authorized domains, or sign-in fails
-with `auth/unauthorized-domain`.
+GitHub Pages was switched off on 2026-09-08. Two hosts fed by two unlinked
+pipelines could drift silently, and only the Firebase domain is auto-authorized
+for Google sign-in, so a stale Firebase deploy was the one failure that actually
+mattered. The repo is still the home of the code — every change is committed and
+pushed — it just does not serve anything.
+
+Any other origin you want to open the app from (a Tailscale name, a custom
+domain) must be added by hand under Authentication → Settings → Authorized
+domains, or sign-in fails with `auth/unauthorized-domain`.
 
 ## Run it locally
 
 ```bash
-python3 -m http.server 4780 --directory /Users/simonsakata/ThruLine
+python3 -m http.server 4780 --directory /Users/simonsakata/Downloads/ThruLine
 ```
 
 Then open http://localhost:4780. (Also registered as the `throughline` launch
 config, so Claude Code can start it directly.)
 
-## Deploy to GitHub Pages
+## Shipping a change
 
-Pages serves `index.html` straight from the repo root on `main`, so shipping a
-change is just:
+Two steps, and **both are required** — nothing links them, so skipping either
+leaves the repo and the live site disagreeing:
 
 ```bash
 git add -A && git commit -m "your change" && git push
 ```
 
-Pages rebuilds on its own within a minute or so. HTTPS is on by default, which
-matters here — the microphone (Web Speech dictation) only works on a secure
-origin, so the deployed page can do voice input where a plain `http://` host
-could not.
-
-## Alternative: deploy to Firebase Hosting
-
-One-time:
-
-```bash
-npm install -g firebase-tools && firebase login
-```
-
-Put your real project id in `.firebaserc` (replace `REPLACE-WITH-YOUR-FIREBASE-PROJECT-ID`),
-then:
-
 ```bash
 firebase deploy --only hosting
 ```
 
-That publishes `index.html` at `https://<project-id>.web.app`. On your phone,
-open it and use Share → Add to Home Screen; it runs full-screen like an app.
+The first records the change; the second is what users actually get. Firebase
+uploads from this folder on disk, not from GitHub.
+
+HTTPS is on by default, which matters here — the microphone (Web Speech
+dictation) only works on a secure origin, so the deployed page can do voice
+input where a plain `http://` host could not. On your phone, open the URL and
+use Share → Add to Home Screen; it runs full-screen like an app.
+
+If the two-step ever becomes a nuisance, `firebase init hosting:github` will
+generate a GitHub Actions workflow that deploys on push, collapsing it back to
+one command.
 
 ### Hosting it next to Habit Casino
 
-On GitHub Pages every `ramentooth.github.io` project shares one origin, so if
-Habit Casino is ever hosted there too, Throughline can read
-`localStorage['habitCasino.v1']` directly — Settings will show a "Read from this
-browser" button and you never have to export a file. On different domains,
-export from Habit Casino (Settings → Export) and import the JSON here.
+If Habit Casino is ever deployed to this same Firebase project, both apps share
+one origin and Throughline can read `localStorage['habitCasino.v1']` directly —
+Settings grows a "Read from this browser" button and no export file is needed.
+Across different domains, export from Habit Casino (Settings → Export) and
+import the JSON here.
 
 ## Memory
 
