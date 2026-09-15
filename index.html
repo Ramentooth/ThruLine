@@ -106,8 +106,8 @@ input[type=text],input[type=password],input[type=search],input[type=number],sele
   padding:11px 12px; outline:none; transition:border-color .15s ease;
 }
 input:focus,select:focus,textarea:focus{border-color:var(--accent-line);}
-label.fld{display:block; margin-bottom:12px;}
-label.fld span{display:block; font-size:12.5px; font-weight:500; color:var(--dim); margin-bottom:6px;}
+label.fld, div.fld{display:block; margin-bottom:12px;}
+label.fld span, div.fld span{display:block; font-size:12.5px; font-weight:500; color:var(--dim); margin-bottom:6px;}
 .tag{
   display:inline-block; font-size:12px; padding:3px 9px; border-radius:999px;
   background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-line);
@@ -314,8 +314,9 @@ details.disc summary{font-size:12.5px; color:var(--dim); cursor:pointer; font-we
 details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 0 0;}
 /* ============================== FOCUS MODE ==============================
    Start typing and the app gets out of the way — the chrome fades, the sheet
-   grows, and nothing is left but the words. Any mouse movement (or Escape, or
-   the "done" affordance for touch) brings it all back. */
+   grows, and nothing is left but the words. Reaching for a screen edge with
+   the pointer (or Escape, or the "done" affordance for touch) brings it all
+   back. The pointer itself stays visible — it is how you find the edge. */
 header.top, .datebar, .mic-row, #moodCard, #habitToday, #reflectRow, #aiOut,
 #museOut, #entryNav, nav.tabs, .editor-wrap, .editor-meta{
   transition:opacity .55s ease, transform .55s ease, background .55s ease, border-color .55s ease;
@@ -335,7 +336,6 @@ body.zen #view-write{padding-bottom:var(--zen-pad, 0px);}
 /* The editor grows to fit its content, so the page is the only scroller —
    a textarea scrolling inside a scrolling page is a trap to get stuck in. */
 #editor{overflow-y:hidden;}
-body.zen, body.zen #editor{cursor:none;}   /* the pointer is the way out, so it hides too */
 
 .zen-exit{
   position:fixed; right:16px; bottom:calc(18px + var(--safe-b)); z-index:40;
@@ -400,14 +400,16 @@ body.zen .zen-exit:hover{opacity:1;}
   <div id="museOut"></div>
 
   <div class="card" id="moodCard">
-    <label class="fld" style="margin-bottom:14px">
-      <span>Mood — how the day felt</span>
+    <!-- Deliberately not <label>: a label forwards clicks inside it to its
+         first button, which turned every rating into a 1. -->
+    <div class="fld" style="margin-bottom:14px" role="group" aria-labelledby="moodLbl">
+      <span id="moodLbl">Mood — how the day felt</span>
       <div class="scale" id="moodScale"></div>
-    </label>
-    <label class="fld" style="margin-bottom:0">
-      <span>Energy — what you had in the tank</span>
+    </div>
+    <div class="fld" style="margin-bottom:0" role="group" aria-labelledby="energyLbl">
+      <span id="energyLbl">Energy — what you had in the tank</span>
       <div class="scale" id="energyScale"></div>
-    </label>
+    </div>
   </div>
 
   <div id="habitToday"></div>
@@ -514,21 +516,21 @@ body.zen .zen-exit:hover{opacity:1;}
       <span>What should the reflection focus on? (added to every analysis)</span>
       <textarea id="setPersona" rows="3" placeholder="e.g. Be direct with me. I care about faith, discipline, and whether I'm avoiding hard things."></textarea>
     </label>
-    <label class="fld" style="margin:14px 0 0">
-      <span>How much should it write back?</span>
+    <div class="fld" style="margin:14px 0 0" role="group" aria-labelledby="depthLbl">   <!-- not <label>: see #moodCard -->
+      <span id="depthLbl">How much should it write back?</span>
       <div class="seg" id="depthSeg">
         <button data-d="brief">Brief</button>
         <button data-d="conversational">Conversational</button>
         <button data-d="deep">Deep</button>
       </div>
-    </label>
+    </div>
     <p class="hint" id="depthHint"></p>
     <div class="row" style="margin-top:6px">
       <div class="rl"><b>Auto-reflect on save</b><small>Analyze an entry as soon as you stop writing for a while</small></div>
       <div class="sw" id="swAuto"></div>
     </div>
     <div class="row" style="border-bottom:none">
-      <div class="rl"><b>Focus mode</b><small>Everything fades while you type — move the mouse, press Escape or tap “done” to bring it back</small></div>
+      <div class="rl"><b>Focus mode</b><small>Everything fades while you type — move the mouse to any edge of the screen, press Escape, or tap “done” to bring it back</small></div>
       <div class="sw" id="swZen"></div>
     </div>
   </div>
@@ -1422,16 +1424,24 @@ function renderWrite(){
   renderStreakChip();
 }
 
+/* Built once, then updated in place — the button being clicked must still be
+   in the document when its click finishes, or ancestors misread the event. */
 function renderScale(sel, val, onPick){
   const host = $(sel);
-  host.innerHTML = '';
-  for (let i = 1; i <= 10; i++){
-    const b = document.createElement('button');
-    b.textContent = i;
-    if (val === i) b.className = 'on';
-    b.onclick = () => onPick(val === i ? null : i);
-    host.appendChild(b);
+  if (host.children.length !== 10){
+    host.innerHTML = '';
+    for (let i = 1; i <= 10; i++){
+      const b = document.createElement('button');
+      b.textContent = i;
+      host.appendChild(b);
+    }
   }
+  [...host.children].forEach((b, k) => {
+    const i = k + 1;
+    b.classList.toggle('on', val === i);
+    b.setAttribute('aria-pressed', String(val === i));
+    b.onclick = () => onPick(val === i ? null : i);
+  });
 }
 
 function renderEntryNav(list, e){
@@ -1467,8 +1477,13 @@ function updateWordCount(){
 function growEditor(){
   const ed = $('#editor');
   if (!ed) return;
+  const y = window.scrollY;
   ed.style.height = 'auto';
   ed.style.height = ed.scrollHeight + 'px';
+  // The brief 'auto' shrinks the page and the browser clamps the scroll to
+  // fit — on a long entry that threw the page hundreds of px up on every
+  // re-render (a rating tap, focus mode starting). Put it back.
+  if (window.scrollY !== y) window.scrollTo(0, y);
 }
 
 /* How much trailing space the page needs for the last line to reach the top
@@ -1477,11 +1492,13 @@ function growEditor(){
 function sizeZenPad(){
   const ed = $('#editor');
   if (!ed) return;
+  const y = window.scrollY;
   document.documentElement.style.setProperty('--zen-pad', '0px');
   const edBottom = ed.getBoundingClientRect().bottom + window.scrollY;
   const below = Math.max(0, document.documentElement.scrollHeight - edBottom);
   const want = window.innerHeight * 2 / 3;
   document.documentElement.style.setProperty('--zen-pad', Math.max(0, Math.round(want - below)) + 'px');
+  if (window.scrollY !== y) window.scrollTo(0, y);   // same clamp as growEditor, from the '0px' measurement
 }
 
 function renderStreakChip(){
@@ -3392,7 +3409,7 @@ function wireZen(){
   // over what you wrote has to be possible without breaking focus.
   document.addEventListener('mousemove', ev => {
     if (!zenOn) return;
-    if (Date.now() - zenStarted < 250) return;   // hiding the cursor can itself emit a move
+    if (Date.now() - zenStarted < 250) return;   // a moment's grace while the page reflows around the pointer
     const nearEdge =
       ev.clientX <= ZEN_EDGE || ev.clientY <= ZEN_EDGE ||
       ev.clientX >= window.innerWidth  - ZEN_EDGE ||

@@ -111,7 +111,8 @@ nav all go, the sheet loses its border, and the editor fills the screen.
 
 Getting out is deliberately hard to do by accident. Only moving the pointer
 within **100px of a screen edge** ends it (`ZEN_EDGE`) — roaming around the
-middle is reading your own writing, not asking for the app back. There is no
+middle is reading your own writing, not asking for the app back. The pointer
+stays visible throughout, since you have to see it to find an edge. There is no
 scroll handler at all, so you can scroll freely while staying in focus. Escape
 and the low-contrast "done" chip cover touch and keyboard-only use, it stays off
 while dictating so the stop button remains reachable, and leaving the Write tab
