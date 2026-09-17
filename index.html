@@ -2889,8 +2889,12 @@ function parseHabitCasino(obj){
   };
 }
 
-function importHabitJSON(text, source){
-  const parsed = parseHabitCasino(JSON.parse(text));
+function importHabitJSON(text, source){ importHabitObject(JSON.parse(text), source); }
+
+/* `quiet` is for the automatic cloud refresh, which should not announce itself
+   every time you open the app. */
+function importHabitObject(obj, source, quiet){
+  const parsed = parseHabitCasino(obj);
   parsed.source = source || parsed.source;
   habitData = parsed;
   saveHabits();
@@ -2898,13 +2902,121 @@ function importHabitJSON(text, source){
   renderWrite();
   if ($('#view-patterns').classList.contains('active')) renderPatterns();
   const n = Object.keys(habitData.days).length;
-  toast('Imported ' + n + ' tracked days, ' + habitData.habitNames.length + ' habits');
+  if (!quiet) toast('Imported ' + n + ' tracked days, ' + habitData.habitNames.length + ' habits');
 }
 
 /* If this app is served from the same origin as Habit Casino, its save is
    sitting right there in localStorage — no export needed. */
 function sameOriginHabitSave(){
   try{ return localStorage.getItem(HC_KEY); }catch(e){ return null; }
+}
+
+/* ---------- Habit Casino's own cloud save ----------
+   Habit Casino has its own Firebase project and keeps one document per
+   signed-in user at users/{uid}, holding its entire save as a JSON string.
+   Reading that is what makes this connection live — no export, no file.
+
+   These are that project's public identifiers, the same ones its own page
+   ships with. They grant nothing by themselves: its rules still let only the
+   owner read that document, so you sign in here with the same Google account.
+   It runs as a second, separate Firebase app instance ('habits'), so
+   Throughline's own sync is completely untouched by any of this. */
+const HC_FB_CONFIG = {
+  apiKey:            'AIzaSyDMEKDzS7tMxPqkMfIYhJ4RpMUZjxU1MYM',
+  authDomain:        'habitcasino-5d08b.firebaseapp.com',
+  projectId:         'habitcasino-5d08b',
+  appId:             '1:220751821930:web:2a8ef213f68d0d6be89e13',
+  storageBucket:     'habitcasino-5d08b.firebasestorage.app',
+  messagingSenderId: '220751821930',
+};
+const HC_CLOUD_KEY = 'throughline.hccloud';   // per device, because the sign-in is too
+
+let hcFb = null;            // { app, auth, authMod, db, dbMod, uid, email }
+let hcCloudError = '';
+let hcPulling = false;
+let hcLastSync = 0;
+
+function hcCloudOn(){ try{ return localStorage.getItem(HC_CLOUD_KEY) === '1'; }catch(e){ return false; } }
+function setHcCloud(on){ try{ on ? localStorage.setItem(HC_CLOUD_KEY, '1') : localStorage.removeItem(HC_CLOUD_KEY); }catch(e){} }
+
+/* Mirrors fbConnect, pointed at Habit Casino's project instead of this one. */
+async function hcConnect(interactive){
+  if (hcFb) return hcFb;
+  const V = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  const appMod  = await import(V + 'firebase-app.js');
+  const authMod = await import(V + 'firebase-auth.js');
+  const dbMod   = await import(V + 'firebase-firestore.js');
+
+  const app  = appMod.initializeApp(HC_FB_CONFIG, 'habits');
+  const auth = authMod.getAuth(app);
+  const db   = dbMod.getFirestore(app);
+
+  let user = auth.currentUser;
+  if (!user) user = await new Promise(res => { const un = authMod.onAuthStateChanged(auth, u => { un(); res(u); }); });
+  if (!user){
+    try{ const redir = await authMod.getRedirectResult(auth); if (redir && redir.user) user = redir.user; }catch(e){ /* none in flight */ }
+  }
+  if (!user){
+    if (!interactive) return null;
+    const provider = new authMod.GoogleAuthProvider();
+    try{
+      user = (await authMod.signInWithPopup(auth, provider)).user;
+    }catch(err){
+      const code = (err && err.code) || '';
+      if (/popup-blocked|popup-closed-by-user|cancelled-popup-request|operation-not-supported/.test(code)){
+        setHcCloud(true);            // so the next load knows to pick the redirect back up
+        await authMod.signInWithRedirect(auth, provider);
+        return null;
+      }
+      throw err;
+    }
+  }
+  hcFb = { app, auth, authMod, db, dbMod, uid: user.uid, email: user.email || '' };
+  return hcFb;
+}
+
+function hcFriendly(err){
+  const code = (err && err.code) || '';
+  if (code === 'auth/unauthorized-domain')
+    return 'Habit Casino\u2019s Firebase project has not authorised ' + location.hostname +
+           ' yet \u2014 add it under Authentication \u2192 Settings \u2192 Authorized domains.';
+  if (code === 'permission-denied')
+    return 'Habit Casino\u2019s rules refused that read \u2014 sign in with the same Google account you use there.';
+  if (code === 'unavailable') return 'No connection to Habit Casino\u2019s cloud right now.';
+  return (err && err.message) || 'Could not read the cloud save.';
+}
+
+async function hcCloudPull(interactive){
+  if (hcPulling) return false;
+  hcPulling = true;
+  try{
+    const c = await hcConnect(interactive);
+    if (!c) return false;                  // not signed in here yet, or a redirect is in flight
+    const snap = await c.dbMod.getDoc(c.dbMod.doc(c.db, 'users', c.uid));
+    if (!snap.exists()) throw new Error('That account has no Habit Casino cloud save yet \u2014 open Habit Casino and turn on its cloud save first.');
+    const raw = snap.data().state;
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!obj) throw new Error('The cloud save came back empty.');
+    setHcCloud(true);
+    hcLastSync = Date.now();
+    importHabitObject(obj, 'Habit Casino cloud', !interactive);
+    return true;
+  } finally { hcPulling = false; }
+}
+
+/* On load, and again when you open Patterns if it has been a while — keeping
+   itself current is the whole point. A failure here stays quiet; the card in
+   Settings is where it gets reported. */
+async function hcAutoSync(force){
+  if (!hcCloudOn()) return;
+  if (!force && hcLastSync && Date.now() - hcLastSync < 300000) return;
+  try{
+    await hcCloudPull(false);
+    hcCloudError = '';
+  }catch(e){
+    hcCloudError = hcFriendly(e);
+    if (curView === 'settings') renderHabitCard();
+  }
 }
 
 function renderHabitCard(){
@@ -2921,17 +3033,24 @@ function renderHabitCard(){
     html += '<p class="hint" style="margin-bottom:12px">' + esc(habitData.source) + ' · imported ' +
       new Date(habitData.importedAt).toLocaleDateString() + '</p>';
   } else {
-    html += '<p class="hint" style="margin:0 0 14px">Export your save from Habit Casino (Settings → Export) ' +
-      'and drop it in here. Then the Patterns tab can line up what you got done against how you felt.</p>';
+    html += '<p class="hint" style="margin:0 0 14px">Connect to Habit Casino below, or import an export file, ' +
+      'and the Patterns tab can line up what you got done against how you felt.</p>';
   }
 
+  const cloud = hcCloudOn();
   html += '<div class="btn-row">' +
-    '<button class="btn sm' + (n ? '' : ' primary') + '" id="habFile">' + (n ? 'Replace from file' : 'Import export file') + '</button>' +
+    (cloud ? '<button class="btn sm" id="habCloudNow">Refresh now</button>'
+           : '<button class="btn sm' + (n ? '' : ' primary') + '" id="habCloud">Connect Habit Casino cloud</button>') +
+    '<button class="btn sm" id="habFile">' + (n ? 'Replace from file' : 'Import export file') + '</button>' +
     '<button class="btn sm" id="habPaste">Paste JSON</button>' +
-    (local ? '<button class="btn sm primary" id="habLocal">Read from this browser</button>' : '') +
+    (local ? '<button class="btn sm" id="habLocal">Read from this browser</button>' : '') +
     (n ? '<button class="btn sm danger" id="habClear">Remove</button>' : '') +
+    (cloud ? '<button class="btn sm ghost" id="habCloudOff">Disconnect</button>' : '') +
     '</div>';
-  if (local) html += '<p class="hint">Habit Casino is saved on this same domain — Throughline can read it directly, no export file needed.</p>';
+  if (hcCloudError) html += '<p class="hint" style="color:var(--bad)">' + esc(hcCloudError) + '</p>';
+  else if (cloud) html += '<p class="hint">Reading Habit Casino\u2019s own cloud save — it refreshes whenever Throughline opens, so there is no export file to fetch.</p>';
+  else html += '<p class="hint">Connect once and Throughline reads Habit Casino\u2019s cloud save by itself, on every device. You sign in with the same Google account you use there.</p>';
+  if (local) html += '<p class="hint">Habit Casino is also saved on this same domain — that copy can be read directly.</p>';
 
   host.innerHTML = html;
 
@@ -2950,6 +3069,30 @@ function renderHabitCard(){
     if (!confirm('Remove the imported habit data? Your journal is untouched.')) return;
     habitData = { days: {}, habitNames: [], categories: [], importedAt: 0, source: '' };
     saveHabits(); renderHabitCard(); renderWrite();
+  };
+
+  const conn = $('#habCloud');
+  if (conn) conn.onclick = async () => {
+    conn.disabled = true; conn.textContent = 'Connecting…';
+    hcCloudError = '';
+    try{
+      if (!await hcCloudPull(true)) toast('Finishing sign-in…');
+    }catch(e){ hcCloudError = hcFriendly(e); }
+    renderHabitCard();
+  };
+  const now = $('#habCloudNow');
+  if (now) now.onclick = async () => {
+    now.disabled = true; now.textContent = 'Refreshing…';
+    hcCloudError = '';
+    try{ await hcCloudPull(true); }catch(e){ hcCloudError = hcFriendly(e); }
+    renderHabitCard();
+  };
+  const off = $('#habCloudOff');
+  if (off) off.onclick = async () => {
+    setHcCloud(false);
+    if (hcFb){ try{ await hcFb.authMod.signOut(hcFb.auth); }catch(e){} hcFb = null; }
+    hcCloudError = '';
+    renderHabitCard();
   };
 }
 
@@ -3437,7 +3580,7 @@ function go(v){
   $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
   $$('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
   if (v === 'entries')  renderEntries();
-  if (v === 'patterns') renderPatterns();
+  if (v === 'patterns'){ hcAutoSync(); renderPatterns(); }
   if (v === 'settings') renderSettings();
 }
 function renderAll(){
@@ -3531,6 +3674,7 @@ function init(){
   save();
 
   fbAutoConnect();
+  hcAutoSync();
 
   if (!state.entries.length && !aiReady()){
     setTimeout(() => toast('Add an API key in Settings to turn on reflections'), 1200);

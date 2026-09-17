@@ -54,13 +54,27 @@ If the two-step ever becomes a nuisance, `firebase init hosting:github` will
 generate a GitHub Actions workflow that deploys on push, collapsing it back to
 one command.
 
-### Hosting it next to Habit Casino
+### Reading Habit Casino
 
-If Habit Casino is ever deployed to this same Firebase project, both apps share
-one origin and Throughline can read `localStorage['habitCasino.v1']` directly —
-Settings grows a "Read from this browser" button and no export file is needed.
-Across different domains, export from Habit Casino (Settings → Export) and
-import the JSON here.
+Settings → Habit Casino → **Connect Habit Casino cloud** signs in to Habit
+Casino's own Firebase project (`habitcasino-5d08b`) and reads its cloud save —
+one document at `users/{uid}` holding its whole state as a JSON string —
+directly. It refreshes on every load, and again when you open Patterns if the
+last read is over five minutes old, so there is no export file to fetch.
+
+Nothing in Habit Casino changes. Its rules already allow only the owner to read
+that document, and this runs as a second, separate Firebase app instance
+(`'habits'`), so Throughline's own sync is untouched.
+
+Two things have to be true. You must be signed in to cloud save inside Habit
+Casino — only its `habitcasino-5d08b.web.app` origin can do that, since the
+GitHub Pages copy is not on that project's authorized-domains list. And this
+app's own domain has to be on that same list, or sign-in fails with
+`auth/unauthorized-domain` (the card in Settings says so when it happens).
+
+The file import and "Paste JSON" remain as fallbacks, and if Habit Casino is
+ever served from this same origin, "Read from this browser" reads its
+`localStorage['habitCasino.v1']` with no account involved at all.
 
 ## Memory
 
