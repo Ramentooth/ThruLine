@@ -76,6 +76,28 @@ The file import and "Paste JSON" remain as fallbacks, and if Habit Casino is
 ever served from this same origin, "Read from this browser" reads its
 `localStorage['habitCasino.v1']` with no account involved at all.
 
+## Three ways to talk to it
+
+| | What it does | Where it lives |
+|---|---|---|
+| **Reflect** | one pass over the day: a short summary, what stands out, any distortion it names, tags, a mood read. No conversation. | the day's entry |
+| **✦ Go deeper** | the back-and-forth. Opens under the entry and keeps going as long as you like; depth setting controls length and effort. | the day's entry |
+| **Chat** | its own tab, not tied to a day. Knows your profile, lessons, recent entries, and pulls up an older day or an earlier chat when what you say matches one. | `state.chats` |
+
+Reflect used to hold a thread too, which made it a second, worse version of Go
+deeper. It doesn't any more. The reflections and threads you'd already written
+were not thrown away: on first load `migrateReflections()` appends each one to
+the bottom of its own entry under a `✦ Reflection · <date>` rule, backfills
+`ai.summary` if it was empty, keeps the raw copy in `ai.archived`, and writes the
+whole pre-migration blob to `throughline.v1.before-reflections-moved` first. It
+runs once, guarded by `state.meta.reflectionsInBody`.
+
+## Jumping between days
+
+Click the day name at the top of the write view ("Today", "Tue, Sep 22") for a
+month grid: Monday-first, a dot under every day with something written, future
+days disabled, ‹ › to change month. Escape or the backdrop closes it.
+
 ## Memory
 
 Three layers reach a reflection, in ascending durability:
@@ -95,6 +117,11 @@ about how you think, rebuilt from the whole journal and loaded into every
 conversation. It *revises* rather than rewrites, is told to say when it changes
 its mind, keeps its last 6 versions, and is editable — anything you correct is
 what future reflections read.
+
+**Chat echoes** work the same way in the other direction: a free chat is scored
+against your entries *and* your earlier chats (`findChatEchoes`), and whatever
+matches rides into the next reply. Chats are memory too — a reflection or a
+going-deeper thread can quote one back.
 
 **Life lessons** are the opposite direction: conclusions you wrote deliberately.
 They go into every call with an instruction to quote one back only when the day
@@ -212,16 +239,17 @@ The `<script>` is banner-commented in this order:
 
 ```
 DATA MODEL · HELPERS · AI · THINKING ANIMATION · WRITE VIEW
-MEMORY · ANALYTICS · CHARTS · ENTRIES VIEW · PATTERNS VIEW
+MEMORY · CHAT · ANALYTICS · CHARTS · ENTRIES VIEW · PATTERNS VIEW
 PROFILE & LESSONS · HABIT CASINO · FIREBASE SYNC · SETTINGS
-FOCUS MODE · ROUTING & INIT
+FOCUS MODE · MODAL + CALENDAR · ROUTING & INIT
 ```
 
 Storage keys:
 
 | Key | Holds |
 |---|---|
-| `throughline.v1` | entries (text, reflections, both chat threads), reports, prefs — the export payload |
+| `throughline.v1` | entries (text, reflections, going-deeper threads), free chats, reports, prefs — the export payload |
+| `throughline.v1.before-reflections-moved` | one-time safety copy taken before reflections were folded into entry bodies |
 | `throughline.ai` | provider, key, model — never exported |
 | `throughline.habits.v1` | the reduced Habit Casino day index |
 | `throughline.fb` | your Firebase config (not a secret) |

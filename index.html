@@ -73,7 +73,7 @@ nav.tabs{
   backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
   border-top:1px solid var(--line); padding:6px 8px calc(6px + var(--safe-b));
 }
-nav.tabs .inner{max-width:760px; margin:0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:4px;}
+nav.tabs .inner{max-width:760px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:4px;}
 nav.tabs button{
   display:flex; flex-direction:column; align-items:center; gap:3px;
   padding:7px 2px 5px; border-radius:11px; color:var(--dim);
@@ -312,6 +312,62 @@ html[data-theme="light"] .scale button.on{color:#fff;}
 details.disc{border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 13px; margin-top:10px; background:var(--bg2);}
 details.disc summary{font-size:12.5px; color:var(--dim); cursor:pointer; font-weight:500;}
 details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 0 0;}
+/* ============================== MODAL + CALENDAR ============================== */
+.modal-back[hidden]{display:none;}   /* author display: beats the UA's [hidden] rule */
+.modal-back{
+  position:fixed; inset:0; z-index:55; display:grid; place-items:center; padding:18px;
+  background:rgba(0,0,0,.6); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+  animation:fade .16s ease;
+}
+.modal{
+  position:relative; width:100%; max-width:420px; background:var(--panel);
+  border:1px solid var(--line); border-radius:22px; padding:22px 20px 18px;
+  box-shadow:0 26px 70px rgba(0,0,0,.55);
+}
+.modal-x{
+  position:absolute; top:13px; right:13px; width:38px; height:38px; border-radius:12px;
+  background:var(--panel2); border:1px solid var(--line2); color:var(--dim);
+  font-size:15px; display:grid; place-items:center;
+}
+.modal-x:hover{color:var(--fg);}
+.cal-head{display:flex; align-items:center; gap:10px; margin:6px 0 16px;}
+.cal-head .m{flex:1; text-align:center; font-size:19px; font-weight:600; letter-spacing:-.01em;}
+.cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px;}
+.cal-dow{font-size:11px; font-weight:600; color:var(--faint); text-align:center; padding-bottom:6px;}
+.cal-day{
+  position:relative; aspect-ratio:1/1; border-radius:50%; background:transparent; border:none;
+  font-size:14.5px; font-weight:600; color:var(--fg2); display:grid; place-items:center;
+}
+.cal-day:hover:not(:disabled){background:var(--panel2);}
+.cal-day.off{color:var(--faint); font-weight:500;}
+.cal-day.today{color:var(--accent);}
+.cal-day.cur,.cal-day.cur:hover{background:var(--fg); color:var(--bg);}
+.cal-day:disabled{opacity:.35;}
+.cal-day .dot{
+  position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+  width:4px; height:4px; border-radius:50%; background:var(--accent);
+}
+.cal-day.cur .dot{background:var(--bg);}
+.cal-foot{font-size:12.5px; color:var(--dim); margin:16px 2px 0;}
+#dayTitle{cursor:pointer;}
+#dayTitle:after{content:' \25be'; font-size:13px; color:var(--faint);}
+#dayTitle:hover{color:var(--accent);}
+
+/* ============================== CHAT ============================== */
+.chat-head{display:flex; align-items:flex-end; gap:10px; margin-bottom:14px;}
+.chat-head .d{font-size:20px; font-weight:600; letter-spacing:-.02em;}
+.chat-head .sub{font-size:12.5px; color:var(--dim);}
+.chat-row{
+  display:block; width:100%; text-align:left; padding:12px 14px;
+  border-bottom:1px solid var(--line); background:transparent;
+}
+.chat-row:last-child{border-bottom:none;}
+.chat-row:hover{background:var(--panel2);}
+.chat-row.on{background:var(--accent-soft);}
+.chat-row .t{font-size:14px; color:var(--fg); font-weight:500;}
+.chat-row .s{font-size:12px; color:var(--faint); margin-top:3px;}
+#chatThread .bub:last-child{margin-bottom:0;}
+
 /* ============================== FOCUS MODE ==============================
    Start typing and the app gets out of the way — the chrome fades, the sheet
    grows, and nothing is left but the words. Reaching for a screen edge with
@@ -393,7 +449,7 @@ body.zen .zen-exit:hover{opacity:1;}
     <div class="editor-meta">
       <span id="wordCount">0 words</span>
       <span class="spacer"></span>
-      <button class="btn sm ghost" id="promptBtn">✦ Talk it through</button>
+      <button class="btn sm ghost" id="promptBtn">✦ Go deeper</button>
     </div>
   </div>
 
@@ -474,6 +530,20 @@ body.zen .zen-exit:hover{opacity:1;}
 
   <h2 class="sec">Deep pattern report</h2>
   <div class="card" id="reportCard"></div>
+</section>
+
+<!-- ============================== CHAT ============================== -->
+<section class="view" id="view-chat">
+  <div class="chat-head">
+    <div>
+      <div class="d">Chat</div>
+      <div class="sub">Not about one day — it remembers the whole journal</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn sm" id="chatNew">+ New chat</button>
+  </div>
+  <div id="chatOut"></div>
+  <div id="chatHistory"></div>
 </section>
 
 <!-- ============================== SETTINGS ============================== -->
@@ -605,10 +675,24 @@ body.zen .zen-exit:hover{opacity:1;}
 
 <nav class="tabs"><div class="inner">
   <button data-v="write" class="active"><span class="ic">✎</span>Write</button>
+  <button data-v="chat"><span class="ic">✦</span>Chat</button>
   <button data-v="entries"><span class="ic">📖</span>Entries</button>
   <button data-v="patterns"><span class="ic">◈</span>Patterns</button>
   <button data-v="settings"><span class="ic">⚙</span>Settings</button>
 </div></nav>
+
+<div class="modal-back" id="calBack" hidden>
+  <div class="modal" role="dialog" aria-label="Jump to a day">
+    <button class="modal-x" id="calClose" title="Close">✕</button>
+    <div class="cal-head">
+      <button class="navbtn" id="calPrev" title="Previous month">‹</button>
+      <div class="m" id="calMonthLbl"></div>
+      <button class="navbtn" id="calNext" title="Next month">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <p class="cal-foot">A dot marks a day you wrote.</p>
+  </div>
+</div>
 
 <div id="thinkLayer" class="off"><div id="thinkMirror"></div><div id="thinkCaption"></div></div>
 
@@ -650,6 +734,9 @@ function defaultState(){
     /* Things you decided on purpose and want handed back when they apply.
        { id, text, createdAt, timesUsed, lastUsed } */
     lessons: [],
+    /* Free-standing conversations, not tied to any one day. They are memory
+       too: findChatEchoes can pull one back into a later conversation. */
+    chats: [],
     prefs: {
       theme: 'dark',
       autoReflect: false,
@@ -678,6 +765,7 @@ function load(){
       if (!Array.isArray(state.entries)) state.entries = [];
       if (!Array.isArray(state.reports)) state.reports = [];
       if (!Array.isArray(state.lessons)) state.lessons = [];
+      if (!Array.isArray(state.chats))   state.chats = [];
       state.profile = Object.assign(defaultState().profile, s.profile || {});
       if (!Array.isArray(state.profile.history)) state.profile.history = [];
       state.entries.forEach(normalizeEntry);
@@ -1154,40 +1242,6 @@ const DEPTHS = {
 };
 function depthCfg(){ return DEPTHS[state.prefs.depth] || DEPTHS.conversational; }
 
-const REFLECT_SYSTEM =
-  'Someone has just written in their private journal and handed it to you to read. Write back to them.\n\n' +
-  'Write the way you would actually talk to a person you know well — full paragraphs, thinking on the ' +
-  'page, following the thread where it leads. Not a report. Not bullet points. Not a form with headings ' +
-  'and labels. No opening summary of what they just told you; they were there. Start wherever the ' +
-  'interesting thing is.\n\n' +
-  'What makes a reply worth reading:\n' +
-  '- Engage with the actual specifics. Names, hours, the exact thing that went wrong. Generic reflection ' +
-  'is worse than none.\n' +
-  '- Quote their own phrasing back when a word is carrying more weight than they noticed. People reveal ' +
-  'themselves in word choice.\n' +
-  '- Say the thing under the thing. If they wrote about a deadline but the entry is really about not ' +
-  'feeling trusted, say so — carefully, and as a question if you are not sure.\n' +
-  '- Connect to what they have written before when it genuinely rhymes. Name the date. Do not force it.\n' +
-  '- Disagree when they are being unfair to themselves, and equally when they are letting themselves off. ' +
-  'Warmth is not the same as agreement.\n' +
-  '- Let one or two real questions arise in the middle of the thought, not stapled to the end as a list.\n\n' +
-  'What to avoid: therapy-speak ("it sounds like", "I hear that", "hold space", "valid"), praising them ' +
-  'for journaling, restating their day, hedging every sentence into mush, and the tidy uplifting ' +
-  'closing line. It is fine to end unresolved.\n\n' +
-  'Length: aim for LENGTH_SPEC. Plain prose. You may use *italics* for emphasis and > for quoting them, ' +
-  'but no headings and no bullet lists.\n\n' + SAFETY_NOTE;
-
-function reflectSystem(){
-  return REFLECT_SYSTEM.replace('LENGTH_SPEC', depthCfg().words) + personaLine();
-}
-
-const CHAT_SYSTEM =
-  'You are in the middle of a conversation about someone\'s journal entry. You already wrote them a ' +
-  'reflection; now they are replying. Talk normally — same voice, same directness, no restating what ' +
-  'you already said and no re-introducing yourself. Match their length: a short question gets a short ' +
-  'answer, an opened-up answer gets a real one. You may change your mind if what they say warrants it.\n\n' +
-  SAFETY_NOTE;
-
 /* Tagging pass. Its output is never shown as prose — it feeds the Entries list,
    the theme charts and the habit correlation, so short fields are correct here. */
 const ANALYSIS_SYSTEM =
@@ -1461,6 +1515,56 @@ function renderEntryNav(list, e){
   });
 }
 
+/* ---------- the date picker ----------
+   The day heading is the control: tap it and the month opens, a dot under
+   every day that has something in it. Days ahead of today are dead, the same
+   way the › button is. */
+let calMonth = '';          // 'YYYY-MM'
+
+function shiftMonth(ym, n){
+  const parts = String(ym || todayStr()).split('-');
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1 + n, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function openCal(){
+  calMonth = curDate.slice(0, 7);
+  renderCal();
+  $('#calBack').hidden = false;
+}
+function closeCal(){ $('#calBack').hidden = true; }
+
+function renderCal(){
+  const parts = calMonth.split('-');
+  const y = Number(parts[0]), m = Number(parts[1]);
+  const first = new Date(y, m - 1, 1);
+  $('#calMonthLbl').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+
+  const written = new Set(state.entries
+    .filter(e => e.text.trim() || Number.isFinite(e.mood) || e.ai)
+    .map(e => e.date));
+
+  const lead  = (first.getDay() + 6) % 7;            // Monday-first
+  const start = new Date(y, m - 1, 1 - lead);
+  const today = todayStr();
+
+  let html = ['M','T','W','T','F','S','S'].map(d => '<div class="cal-dow">' + d + '</div>').join('');
+  for (let i = 0; i < 42; i++){
+    const d  = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const ds = fmtDate(d);
+    const cls = ['cal-day'];
+    if (d.getMonth() !== m - 1) cls.push('off');
+    if (ds === today)   cls.push('today');
+    if (ds === curDate) cls.push('cur');
+    html += '<button class="' + cls.join(' ') + '" data-d="' + ds + '"' + (ds > today ? ' disabled' : '') + '>' +
+      d.getDate() + (written.has(ds) ? '<span class="dot"></span>' : '') + '</button>';
+  }
+  $('#calGrid').innerHTML = html;
+  $$('#calGrid .cal-day').forEach(b => {
+    b.onclick = () => { closeCal(); openDate(b.dataset.d); };
+  });
+}
+
 function touch(){
   const e = currentEntry();
   if (e) e.updatedAt = Date.now();
@@ -1583,50 +1687,75 @@ function stopDictation(){
 
 /* ---------- reflection ---------- */
 
+/* ---------- one-time: reflections move into the entry ----------
+   A reflection used to be a second conversation living beside the day. The
+   entry itself is now the only place a day's thinking is kept, so every
+   reflection ever written — the prose and every follow-up turn — is appended
+   once to the entry it belongs to. Nothing is thrown away: the originals also
+   stay on the entry under ai.archived, and the pre-move save is copied aside. */
+function migrateReflections(){
+  if (state.meta.reflectionsInBody) return 0;
+
+  let before = null;
+  try{ before = localStorage.getItem(SAVE_KEY); }catch(err){ /* fine */ }
+  let moved = 0;
+
+  state.entries.forEach(e => {
+    const a = e.ai;
+    if (!a) return;
+    const prose  = typeof a.reflection === 'string' ? a.reflection.trim() : '';
+    const thread = Array.isArray(a.thread) ? a.thread.filter(m => m && m.content) : [];
+    if (!prose && !thread.length) return;
+
+    const when = a.analyzedAt ? new Date(a.analyzedAt).toLocaleDateString() : '';
+    let block = '\n\n\u2014\u2014\u2014\n✦ Reflection' + (when ? ' \u00b7 ' + when : '') + '\n\n';
+    if (prose) block += prose + '\n';
+    thread.forEach(m => {
+      block += '\n' + (m.role === 'user' ? 'Me: ' : 'Claude: ') + String(m.content).trim() + '\n';
+    });
+
+    e.text = (e.text || '').replace(/\s+$/, '') + block.replace(/\s+$/, '') + '\n';
+    if (!a.summary && prose) a.summary = prose.replace(/\s+/g, ' ').slice(0, 160);
+    a.archived = { reflection: prose, thread: thread, movedAt: Date.now() };
+    delete a.reflection;
+    a.thread = [];
+    e.updatedAt = Date.now();
+    moved++;
+  });
+
+  state.meta.reflectionsInBody = Date.now();
+  if (moved){
+    // Best effort — a big journal may leave no room for a second copy, which is
+    // survivable, since every reflection is also on its own entry as ai.archived.
+    try{ if (before) localStorage.setItem(SAVE_KEY + '.before-reflections-moved', before); }catch(err){}
+    setTimeout(() => toast('Moved ' + moved + ' reflection' + (moved === 1 ? '' : 's') + ' into your entries'), 1000);
+  }
+  save();
+  return moved;
+}
+
+/* What a reflection leaves behind: a short read of the day and its tags. There
+   is deliberately no conversation here — that lives under Go deeper, so a day
+   has one place to be talked about instead of two. */
 function renderAIOut(e){
   const host = $('#aiOut');
-  if (!e || !e.ai){ host.innerHTML = ''; return; }
-  const a = e.ai;
+  const a = e && e.ai;
+  if (!a || !(a.summary || a.observation)){ host.innerHTML = ''; return; }
   const when = new Date(a.analyzedAt).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-  let html = '<div class="card ai-panel"><h3>✦ Reflection</h3>';
 
-  // Entries written before the prose reflection existed still have only the
-  // short summary — render whatever the entry actually has.
-  if (a.reflection){
-    html += '<div class="reflection" id="reflectionProse">' + mdToHtml(a.reflection) + '</div>';
-  } else {
-    html += '<div class="ai-block"><div class="v">' + esc(a.summary || '') + '</div></div>';
-    if (a.observation){
-      html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
-    }
-  }
+  let html = '<div class="card ai-panel"><h3>✦ Reflection</h3>';
+  if (a.summary)     html += '<div class="ai-block"><div class="v">' + esc(a.summary) + '</div></div>';
+  if (a.observation) html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
 
   if (a.distortions && a.distortions.length){
     html += '<div class="ai-block"><div class="k">Worth a second look</div>';
     a.distortions.forEach(d => {
       html += '<div class="distortion"><div class="nm">' + esc(d.name) + '</div>' +
-        (d.quote ? '<div class="qt">“' + esc(d.quote) + '”</div>' : '') +
+        (d.quote ? '<div class="qt">\u201c' + esc(d.quote) + '\u201d</div>' : '') +
         '<div class="rf">' + esc(d.reframe) + '</div></div>';
     });
     html += '</div>';
   }
-  if (!a.reflection && a.questions && a.questions.length){
-    html += '<div class="ai-block"><div class="k">Sit with these</div><ul class="qlist">' +
-      a.questions.map(q => '<li>' + esc(q) + '</li>').join('') + '</ul></div>';
-  }
-
-  // Follow-up conversation.
-  const thread = Array.isArray(a.thread) ? a.thread : [];
-  html += '<div class="thread" id="aiThread">';
-  thread.forEach(m => {
-    html += m.role === 'user'
-      ? '<div class="bub me">' + esc(m.content) + '</div>'
-      : '<div class="bub ai">' + mdToHtml(m.content) + '</div>';
-  });
-  html += '</div>';
-  html += '<div class="ask">' +
-    '<textarea id="askBox" rows="1" placeholder="Say something back…"></textarea>' +
-    '<button class="btn primary" id="askSend">Send</button></div>';
 
   const tagLine = []
     .concat((a.themes || []).map(t => '<span class="tag">' + esc(t) + '</span>'))
@@ -1634,33 +1763,23 @@ function renderAIOut(e){
     .join('');
   if (tagLine) html += '<div class="ai-block">' + tagLine + '</div>';
 
-  html += '<div class="editor-meta" style="margin-top:16px"><span>' + esc(a.model || '') +
-          (a.moodEstimate ? ' · mood read ' + esc(a.moodEstimate) + '/10' : '') + ' · ' + when +
-          '</span><span class="spacer"></span>' +
-          '<button class="btn sm ghost" id="toLesson">Save a lesson</button>' +
-          '<button class="btn sm ghost" id="redoAI">Redo</button></div>';
-  html += '</div>';
+  html += '<div class="btn-row" style="margin-top:14px">' +
+    '<button class="btn sm primary" id="goDeepBtn">✦ Go deeper</button>' +
+    '<button class="btn sm ghost" id="toLesson">Save a lesson</button>' +
+    '<button class="btn sm ghost" id="redoAI">Redo</button></div>';
+  html += '<div class="editor-meta" style="margin-top:12px"><span>' + esc(a.model || '') +
+          (a.moodEstimate ? ' \u00b7 mood read ' + esc(a.moodEstimate) + '/10' : '') + ' \u00b7 ' + when +
+          '</span></div></div>';
   host.innerHTML = html;
 
-  const redo = $('#redoAI');
-  if (redo) redo.onclick = () => reflect(true);
-  const tl = $('#toLesson');
-  if (tl) tl.onclick = () => {
-    const t = prompt('In your own words — what did you work out here that you do not want to relearn?');
+  $('#redoAI').onclick    = () => reflect(true);
+  $('#goDeepBtn').onclick = goDeeper;
+  $('#toLesson').onclick  = () => {
+    const t = prompt('In your own words \u2014 what did you work out here that you do not want to relearn?');
     if (t && t.trim()) addLesson(t);
   };
-  wireAsk();
 }
 
-function wireAsk(){
-  const box = $('#askBox'), send = $('#askSend');
-  if (!box) return;
-  autoGrow(box, askFollowUp);
-  send.onclick = askFollowUp;
-}
-
-/* The entry, its context and the first reflection replayed as a real
-   conversation, so a follow-up continues the thread rather than starting over. */
 /* ============================== MEMORY ==============================
    Three layers feed a reflection, in ascending order of durability:
 
@@ -1689,18 +1808,20 @@ function salientTerms(text, n){
 /* Older entries worth reaching back for. Scored on overlap between today's
    language (plus any concepts the concept pass found) and the themes and
    summaries already stored on each past entry. Local, instant, free. */
-function findEchoes(e, concepts){
+function findEchoes(e, concepts){ return findEchoesForText(e.text, concepts, e.id); }
+
+function findEchoesForText(text, concepts, excludeId){
   const recentIds = new Set(state.entries
-    .filter(x => x.id !== e.id && x.ai)
+    .filter(x => x.id !== excludeId && x.ai)
     .sort((a,b) => b.date.localeCompare(a.date))
     .slice(0, RECENT_N)
     .map(x => x.id));
 
-  const terms = new Set(salientTerms(e.text, 14).concat((concepts || []).map(c => String(c).toLowerCase())));
+  const terms = new Set(salientTerms(text, 14).concat((concepts || []).map(c => String(c).toLowerCase())));
   if (!terms.size) return [];
 
   const scored = state.entries
-    .filter(x => x.id !== e.id && x.ai && !recentIds.has(x.id) && x.text.trim())
+    .filter(x => x.id !== excludeId && x.ai && !recentIds.has(x.id) && x.text.trim())
     .map(x => {
       const hay = ((x.ai.summary || '') + ' ' + (x.ai.themes || []).join(' ') + ' ' +
                    (x.ai.emotions || []).join(' ') + ' ' + x.text).toLowerCase();
@@ -1717,6 +1838,44 @@ function findEchoes(e, concepts){
 
 /* A month-by-month skeleton of everything older, so the model knows the shape
    of the stretch it is NOT being shown in detail. Cheap — one line a month. */
+/* ---------- chats are memory too ----------
+   A conversation you had in March is exactly the kind of thing worth reaching
+   back for, so the same overlap scoring that pulls an old entry also pulls an
+   old chat. Cheap and local, like the rest of the echo layer. */
+const CHAT_ECHO_N = 3;
+
+function chatBody(c){ return (c.messages || []).map(m => m.content).join(' '); }
+
+function chatTitle(c){
+  if (c.title) return c.title;
+  const first = (c.messages || []).find(m => m.role === 'user');
+  return first ? String(first.content).replace(/\s+/g, ' ').slice(0, 48) : 'New chat';
+}
+
+function findChatEchoes(text, concepts, excludeId){
+  const terms = new Set(salientTerms(text, 14).concat((concepts || []).map(c => String(c).toLowerCase())));
+  if (!terms.size) return [];
+  return (state.chats || [])
+    .filter(c => c.id !== excludeId && (c.messages || []).length > 1)
+    .map(c => {
+      const hay = chatBody(c).toLowerCase();
+      let score = 0;
+      terms.forEach(t => { if (hay.includes(t)) score++; });
+      return { chat: c, score: score };
+    })
+    .filter(r => r.score > 1)
+    .sort((a,b) => b.score - a.score || b.chat.updatedAt - a.chat.updatedAt)
+    .slice(0, CHAT_ECHO_N);
+}
+
+function chatEchoBlock(list){
+  if (!list || !list.length) return '';
+  return 'CONVERSATIONS THE TWO OF YOU HAVE ALREADY HAD THAT RHYME WITH THIS\n' +
+    '(pulled because the language matches; refer back to one only if it genuinely connects)\n' +
+    list.map(r => new Date(r.chat.createdAt).toLocaleDateString() + ' \u2014 "' + chatTitle(r.chat) + '": ' +
+      chatBody(r.chat).replace(/\s+/g, ' ').slice(0, 700)).join('\n') + '\n\n';
+}
+
 function olderDigest(e){
   const cutoff = state.entries
     .filter(x => x.id !== e.id && x.ai)
@@ -1790,11 +1949,13 @@ function entryContextMessage(e){
     : '';
 
   const echoes = echoBlock(e.__echoes);
+  const chats  = chatEchoBlock(findChatEchoes(e.text, []));
   const digest = olderDigest(e);
 
   return standingMemory() +
     (recent.length ? 'THEIR LAST TWO WEEKS\n' + recent.join('\n') + '\n\n' : '') +
     echoes +
+    chats +
     (digest ? digest + '\n\n' : '') +
     '---\n\n' +
     'Today is ' + longDate(e.date) + '.' +
@@ -1803,73 +1964,27 @@ function entryContextMessage(e){
     '\n\nHere is the entry:\n\n' + e.text;
 }
 
-async function askFollowUp(){
-  const e = currentEntry();
-  const box = $('#askBox');
-  if (!e || !e.ai || !box) return;
-  const text = box.value.trim();
-  if (!text) return;
-  if (!aiReady()){ toast('Add an API key in Settings first', true); return; }
-
-  e.ai.thread = Array.isArray(e.ai.thread) ? e.ai.thread : [];
-  e.ai.thread.push({ role: 'user', content: text });
-  box.value = ''; box.style.height = 'auto';
-  save(); renderAIOut(e);
-
-  const host = $('#aiThread');
-  const bub = document.createElement('div');
-  bub.className = 'bub ai';
-  bub.innerHTML = '<span class="spin"></span>';
-  host.appendChild(bub);
-  bub.scrollIntoView({ behavior: 'smooth', block: 'end' });
-
-  const msgs = [
-    { role: 'user', content: entryContextMessage(e) },
-    { role: 'assistant', content: e.ai.reflection || e.ai.summary || '' },
-  ].concat(e.ai.thread.map(m => ({ role: m.role, content: m.content })));
-
-  try{
-    const reply = await streamAI({
-      system: CHAT_SYSTEM + personaLine(),
-      messages: msgs,
-      maxTokens: 16000,
-      effort: 'high',
-      onDelta: partial => {
-        if (partial && partial.length > 40) thinkClear();
-        bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>';
-      },
-    });
-    if (!reply || !reply.trim()) throw new Error('Empty reply — try again.');
-    e.ai.thread.push({ role: 'assistant', content: reply });
-    save(); renderAIOut(e);
-  }catch(err){
-    e.ai.thread.pop();                    // drop the unanswered question
-    save(); renderAIOut(e);
-    toast(err.message || 'Reply failed', true);
-  }
-}
-
+/* The reflection is a summary now, not a letter: one structured pass naming
+   what the day was about, how it read, and what stands out. Talking about the
+   day happens under Go deeper — the single conversation an entry has. */
 async function reflect(force){
   const e = currentEntry();
-  if (!e || words(e.text) < 15){ toast('Write a little more first — 15 words or so'); return; }
+  if (!e || words(e.text) < 15){ toast('Write a little more first \u2014 15 words or so'); return; }
   if (!aiReady()){ toast('Add an API key in Settings first', true); go('settings'); return; }
-  if (e.ai && !force) return;
+  if (e.ai && e.ai.summary && !force) return;
 
   const btn = $('#reflectBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Reading…';
+  btn.innerHTML = '<span class="spin"></span> Reading\u2026';
 
-  const cfg = depthCfg();
   const model = loadAI().model || MODEL_DEFAULTS[loadAI().provider];
 
-  // Show the panel immediately so the prose has somewhere to stream into.
   $('#aiOut').innerHTML = '<div class="card ai-panel"><h3>✦ Reflection</h3>' +
-    '<div class="reflection" id="reflectionProse"><span class="spin"></span></div></div>';
+    '<div class="ai-block"><div class="v"><span class="spin"></span></div></div></div>';
   $('#aiOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const target = $('#reflectionProse');
 
-  // Name what is in the entry first: it decides which older entries get pulled
-  // in, and it is what the animation shows while the reflection is being written.
+  // The concept pass still runs: it decides which older entries get pulled in,
+  // and it is what the animation is made of.
   const cp = await conceptPass(e);
   e.__echoes = findEchoes(e, cp ? cp.concepts.map(c => c.word) : []);
   if (cp && cp.concepts.length){
@@ -1877,57 +1992,32 @@ async function reflect(force){
     runThinking(cp.concepts, Array.from(new Set(echoWords)).slice(0, 5), '#aiOut');
   }
 
-  const user = entryContextMessage(e);
-
-  // The prose the writer reads, and the tagging the charts need, are different
-  // jobs with different shapes — so they run as two calls, side by side.
-  const prosePromise = streamAI({
-    system: reflectSystem(),
-    messages: [{ role: 'user', content: user }],
-    maxTokens: cfg.max,
-    effort: cfg.effort,
-    onDelta: partial => {
-      if (partial && partial.length > 40) thinkClear();   // the writing has arrived
-      target.innerHTML = mdToHtml(partial) + '<span class="caret"></span>';
-    },
-  });
-  const metaPromise = callAI({
-    system: ANALYSIS_SYSTEM + personaLine(),
-    messages: [{ role: 'user', content: user }],
-    schema: ANALYSIS_SCHEMA,
-    maxTokens: 16000,
-    effort: 'medium',
-  }).catch(err => { console.warn('tagging pass failed', err); return null; });
-
   try{
-    const results = await Promise.allSettled([prosePromise, metaPromise]);
-    const prose = results[0].status === 'fulfilled' ? results[0].value : null;
-    const meta  = results[1].status === 'fulfilled' ? results[1].value : null;
-
-    if (!prose && !meta) throw (results[0].reason || new Error('Reflection failed'));
+    const meta = await callAI({
+      system: ANALYSIS_SYSTEM + personaLine(),
+      messages: [{ role: 'user', content: entryContextMessage(e) }],
+      schema: ANALYSIS_SCHEMA,
+      maxTokens: 16000,
+      effort: 'medium',
+    });
+    if (!meta) throw new Error('The summary came back empty \u2014 try again.');
 
     const prev = e.ai || {};
     e.ai = {
       analyzedAt: Date.now(),
       model: model,
-      reflection: (prose && prose.trim()) || prev.reflection || '',
+      summary:  meta.summary || prev.summary || '',
+      themes:   (meta.themes   || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 6),
+      emotions: (meta.emotions || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5),
+      moodEstimate: clamp(Number(meta.mood_estimate) || 5, 1, 10),
+      observation: meta.observation || '',
+      distortions: Array.isArray(meta.distortions) ? meta.distortions.slice(0, 3) : [],
+      questions:   Array.isArray(meta.questions)   ? meta.questions.slice(0, 4)   : [],
       thread: [],
-      summary: (meta && meta.summary) || prev.summary || '',
-      themes: meta ? (meta.themes || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 6) : (prev.themes || []),
-      emotions: meta ? (meta.emotions || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5) : (prev.emotions || []),
-      moodEstimate: meta ? clamp(Number(meta.mood_estimate) || 5, 1, 10) : (prev.moodEstimate || null),
-      observation: (meta && meta.observation) || '',
-      distortions: meta && Array.isArray(meta.distortions) ? meta.distortions.slice(0, 3) : [],
-      questions: meta && Array.isArray(meta.questions) ? meta.questions.slice(0, 4) : [],
+      archived: prev.archived,
     };
-    // A missing summary would leave a blank row in the Entries list.
-    if (!e.ai.summary && e.ai.reflection){
-      e.ai.summary = e.ai.reflection.replace(/\s+/g, ' ').trim().slice(0, 160);
-    }
     save();
     renderWrite();
-    if (!prose) toast('Tagged, but the written reflection failed — try Redo', true);
-    else if (!meta) toast('Reflection written; tagging failed, so charts may miss this day', true);
   }catch(err){
     toast(err.message || 'Reflection failed', true);
     renderAIOut(e);
@@ -1986,8 +2076,10 @@ function museContext(e){
 
   return standingMemory() +
     'Today is ' + longDate(e.date) + '.\n\n' +
+    (e.ai && e.ai.summary ? 'The summary already made for today reads: ' + e.ai.summary + '\n\n' : '') +
     (recent.length ? 'What they have been writing lately:\n' + recent.join('\n') + '\n\n' : 'They have not written much yet.\n\n') +
     echoBlock(e.__echoes) +
+    chatEchoBlock(findChatEchoes(e.text, [])) +
     (hab && hab.completed.length ? 'What they got done today, from their habit tracker: ' +
       hab.completed.map(c => c.name).join(', ') + '.\n\n' : '') +
     (draft
@@ -2000,7 +2092,7 @@ function museContext(e){
 function renderMuse(e){
   const host = $('#museOut');
   if (!e || !Array.isArray(e.muse) || !e.muse.length){ host.innerHTML = ''; return; }
-  let html = '<div class="card ai-panel"><h3>✦ Talking it through</h3><div id="museThread">';
+  let html = '<div class="card ai-panel"><h3>✦ Going deeper</h3><div id="museThread">';
   e.muse.forEach(m => {
     html += m.role === 'user'
       ? '<div class="bub me">' + esc(m.content) + '</div>'
@@ -2048,8 +2140,8 @@ async function museTurn(e, seed){
     const reply = await streamAI({
       system: MUSE_SYSTEM + personaLine(),
       messages: msgs,
-      maxTokens: 16000,
-      effort: 'high',
+      maxTokens: depthCfg().max,
+      effort: depthCfg().effort,
       onDelta: partial => {
         if (partial && partial.length > 40) thinkClear();
         bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>';
@@ -2081,9 +2173,10 @@ async function museSend(){
   await museTurn(e, false);
 }
 
-/* The "Talk it through" button. With no key configured it falls back to
-   dropping a written prompt into the entry, which is what it used to do. */
-async function promptMe(){
+/* The "Go deeper" button. Now that the reflection is only a summary, this is
+   the single place a conversation about a day happens. With no key configured
+   it falls back to dropping a written prompt into the entry, as it used to. */
+async function goDeeper(){
   const e = ensureEntry();
 
   if (!aiReady()){
@@ -2112,7 +2205,7 @@ async function promptMe(){
   btn.innerHTML = '<span class="spin"></span>';
   exitZen();
 
-  $('#museOut').innerHTML = '<div class="card ai-panel"><h3>✦ Talking it through</h3>' +
+  $('#museOut').innerHTML = '<div class="card ai-panel"><h3>✦ Going deeper</h3>' +
     '<div id="museThread"></div></div>';
   $('#museOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -2132,7 +2225,171 @@ async function promptMe(){
   }finally{
     thinkClear();
     btn.disabled = false;
-    btn.textContent = '✦ Talk it through';
+    btn.textContent = '✦ Go deeper';
+  }
+}
+
+/* ============================== CHAT ==============================
+   A conversation that is not about any one day. It gets the same memory a
+   reflection does — the profile, the lessons, the last two weeks, plus any
+   older entry or earlier chat whose language matches what is being said — and
+   it is saved, so a later conversation can reach back into this one.
+
+   The memory rides in the system prompt rather than as an opening user turn:
+   here the person speaks first, and two user turns in a row is not a valid call. */
+
+const FREE_CHAT_SYSTEM =
+  'You are talking with someone whose journal you have been reading for a long time. This is not ' +
+  'about one particular day \u2014 it is an open conversation, the kind you have with a friend who knows ' +
+  'your history.\n\n' +
+  'Below you are given what you have concluded about them, the lessons they wrote down on purpose, ' +
+  'their recent entries, and any older entry or earlier conversation whose language matches what they ' +
+  'are saying. Use it the way a friend uses memory: bring up the specific day, or the thing they said ' +
+  'in March, when it is actually relevant \u2014 and say which day it was. Do not summarise their journal ' +
+  'back to them, and never open by listing what you remember.\n\n' +
+  'Talk normally. Have opinions, disagree when they deserve it, stay concrete about the real people ' +
+  'and real work in their life. Match their length \u2014 a line gets a line. No headings, no bullet ' +
+  'lists, no therapy-speak, no praise for journaling.\n\n' + SAFETY_NOTE;
+
+let curChatId = null;
+
+function currentChat(){ return (state.chats || []).find(c => c.id === curChatId) || null; }
+
+/* A chat opened and never spoken in is not a chat. Same deal as pruneEmpty(). */
+function pruneChats(){
+  const before = state.chats.length;
+  state.chats = state.chats.filter(c => c.id === curChatId || (c.messages || []).length);
+  if (state.chats.length !== before) save();
+}
+
+function newChat(){
+  const c = { id: uid(), createdAt: Date.now(), updatedAt: Date.now(), title: '', messages: [] };
+  curChatId = null;
+  pruneChats();
+  state.chats.unshift(c);
+  curChatId = c.id;
+  save();
+  renderChat();
+  const box = $('#chatBox'); if (box) box.focus();
+  return c;
+}
+
+/* Everything this conversation is allowed to remember. */
+function chatContextMessage(chat){
+  const said = (chat.messages || []).filter(m => m.role === 'user').map(m => m.content).join(' ');
+
+  const recent = state.entries
+    .filter(x => x.text.trim())
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .slice(0, RECENT_N)
+    .map(x => x.date + ' (mood ' + (x.mood || (x.ai && x.ai.moodEstimate) || '?') + '/10): ' +
+              ((x.ai && x.ai.summary) || x.text.replace(/\s+/g, ' ').slice(0, 180)) +
+              (x.ai && x.ai.themes && x.ai.themes.length ? ' [themes: ' + x.ai.themes.join(', ') + ']' : ''))
+    .reverse();
+
+  const hab = habitData.days[todayStr()];
+
+  return '\n\n---\n\n' + standingMemory() +
+    'Today is ' + longDate(todayStr()) + '.\n\n' +
+    (recent.length ? 'THEIR LAST TWO WEEKS OF ENTRIES\n' + recent.join('\n') + '\n\n'
+                   : 'They have not written many entries yet.\n\n') +
+    (said ? echoBlock(findEchoesForText(said, [], null)) + chatEchoBlock(findChatEchoes(said, [], chat.id)) : '') +
+    (hab && hab.completed.length ? 'What they got done today, from their habit tracker: ' +
+      hab.completed.map(c => c.name).join(', ') + '.\n\n' : '');
+}
+
+function renderChat(){
+  const host = $('#chatOut');
+  const c = currentChat();
+
+  if (!c){
+    host.innerHTML = '<div class="card"><p class="hint" style="margin:0">Nothing open yet. A chat here is not ' +
+      'tied to a day: it knows your profile, your lessons and your recent entries, and it pulls up an older ' +
+      'day or an earlier chat when what you say matches one. What you say here is remembered the same way.</p>' +
+      '<div class="btn-row" style="margin-top:14px"><button class="btn primary" id="chatStart">✦ Start a chat</button></div></div>';
+    $('#chatStart').onclick = newChat;
+    renderChatHistory();
+    return;
+  }
+
+  let html = '<div class="card ai-panel"><h3>✦ ' + esc(chatTitle(c)) + '</h3><div id="chatThread">';
+  c.messages.forEach(m => {
+    html += m.role === 'user'
+      ? '<div class="bub me">' + esc(m.content) + '</div>'
+      : '<div class="bub ai">' + mdToHtml(m.content) + '</div>';
+  });
+  if (!c.messages.length) html += '<p class="hint" style="margin:0">Say anything. The whole journal is behind it.</p>';
+  html += '</div><div class="ask">' +
+    '<textarea id="chatBox" rows="1" placeholder="Say something\u2026"></textarea>' +
+    '<button class="btn primary" id="chatSend">Send</button></div>' +
+    '<div class="editor-meta" style="margin-top:14px"><span>' +
+    (c.messages.length ? c.messages.length + ' messages \u00b7 kept as memory' : 'nothing said yet') +
+    '</span><span class="spacer"></span>' +
+    '<button class="btn sm ghost" id="chatDel">Delete</button></div></div>';
+  host.innerHTML = html;
+
+  autoGrow($('#chatBox'), chatSend);
+  $('#chatSend').onclick = chatSend;
+  $('#chatDel').onclick = () => {
+    if (!confirm('Delete this conversation? It stops being part of memory.')) return;
+    state.chats = state.chats.filter(x => x.id !== curChatId);
+    curChatId = (state.chats[0] || {}).id || null;
+    save(); renderChat();
+  };
+  renderChatHistory();
+}
+
+function renderChatHistory(){
+  const host = $('#chatHistory');
+  const list = (state.chats || []).filter(c => (c.messages || []).length);
+  if (!list.length){ host.innerHTML = ''; return; }
+  host.innerHTML = '<h2 class="sec">Earlier chats</h2><div class="card flush">' +
+    list.map(c => '<button class="chat-row' + (c.id === curChatId ? ' on' : '') + '" data-c="' + c.id + '">' +
+      '<div class="t">' + esc(chatTitle(c)) + '</div>' +
+      '<div class="s">' + new Date(c.createdAt).toLocaleDateString() + ' \u00b7 ' + c.messages.length + ' messages</div>' +
+      '</button>').join('') + '</div>';
+  $$('#chatHistory .chat-row').forEach(b => {
+    b.onclick = () => { curChatId = b.dataset.c; renderChat(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  });
+}
+
+async function chatSend(){
+  const box = $('#chatBox');
+  if (!box) return;
+  const text = box.value.trim();
+  if (!text) return;
+  if (!aiReady()){ toast('Add an API key in Settings first', true); return; }
+
+  const c = currentChat() || newChat();
+  c.messages.push({ role: 'user', content: text, ts: Date.now() });
+  if (!c.title) c.title = text.replace(/\s+/g, ' ').slice(0, 48);
+  c.updatedAt = Date.now();
+  box.value = ''; box.style.height = 'auto';
+  save(); renderChat();
+
+  const host = $('#chatThread');
+  const bub = document.createElement('div');
+  bub.className = 'bub ai';
+  bub.innerHTML = '<span class="spin"></span>';
+  if (host) host.appendChild(bub);
+  bub.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  try{
+    const reply = await streamAI({
+      system: FREE_CHAT_SYSTEM + personaLine() + chatContextMessage(c),
+      messages: c.messages.map(m => ({ role: m.role, content: m.content })),
+      maxTokens: depthCfg().max,
+      effort: depthCfg().effort,
+      onDelta: partial => { bub.innerHTML = mdToHtml(partial) + '<span class="caret"></span>'; },
+    });
+    if (!reply || !reply.trim()) throw new Error('Empty reply \u2014 try again.');
+    c.messages.push({ role: 'assistant', content: reply, ts: Date.now() });
+    c.updatedAt = Date.now();
+    save(); renderChat();
+  }catch(err){
+    c.messages.pop();
+    save(); renderChat();
+    toast(err.message || 'Reply failed', true);
   }
 }
 
@@ -3354,9 +3611,9 @@ function renderSettings(){
   const depth = state.prefs.depth || 'conversational';
   $$('#depthSeg button').forEach(b => b.classList.toggle('on', b.dataset.d === depth));
   $('#depthHint').textContent = {
-    brief: 'A couple of paragraphs. Fastest and cheapest.',
-    conversational: 'A few paragraphs that follow the thread — closest to a reply on claude.ai.',
-    deep: 'A long, unhurried read. Slower, and costs more per entry.',
+    brief: 'Short turns in Go deeper and Chat. Fastest and cheapest.',
+    conversational: 'Turns that follow the thread — closest to a reply on claude.ai.',
+    deep: 'Long, unhurried turns. Slower, and costs more per message.',
   }[depth];
   $('#swRemind').classList.toggle('on', !!state.prefs.remind);
   $('#thDark').classList.toggle('on', state.prefs.theme !== 'light');
@@ -3576,15 +3833,22 @@ let curView = 'write';
 function go(v){
   exitZen();
   if (curView === 'write' && v !== 'write') pruneEmpty();
+  if (curView === 'chat'  && v !== 'chat'){
+    const c = currentChat();                       // keep your place in a real
+    if (c && !c.messages.length) curChatId = null; // conversation, drop a blank one
+    pruneChats();
+  }
   curView = v;
   $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
   $$('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  if (v === 'chat')     renderChat();
   if (v === 'entries')  renderEntries();
   if (v === 'patterns'){ hcAutoSync(); renderPatterns(); }
   if (v === 'settings') renderSettings();
 }
 function renderAll(){
   renderWrite();
+  if (curView === 'chat')     renderChat();
   if (curView === 'entries')  renderEntries();
   if (curView === 'patterns') renderPatterns();
   if (curView === 'settings') renderSettings();
@@ -3616,8 +3880,17 @@ function wire(){
     $('#editor').focus();
   };
   $('#micBtn').onclick = () => { listening ? stopDictation() : startDictation(); };
-  $('#promptBtn').onclick = promptMe;
+  $('#promptBtn').onclick = goDeeper;
   $('#reflectBtn').onclick = () => reflect(true);
+
+  $('#chatNew').onclick = newChat;
+
+  $('#dayTitle').onclick = openCal;
+  $('#calClose').onclick = closeCal;
+  $('#calPrev').onclick  = () => { calMonth = shiftMonth(calMonth, -1); renderCal(); };
+  $('#calNext').onclick  = () => { calMonth = shiftMonth(calMonth,  1); renderCal(); };
+  $('#calBack').addEventListener('click', ev => { if (ev.target === $('#calBack')) closeCal(); });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#calBack').hidden) closeCal(); });
 
   $('#searchBox').addEventListener('input', e => { searchQ = e.target.value; renderEntryList(); });
 
@@ -3654,6 +3927,8 @@ function wire(){
 
 function init(){
   load();
+  migrateReflections();
+  curChatId = (state.chats[0] || {}).id || null;
   document.documentElement.dataset.theme = state.prefs.theme === 'light' ? 'light' : 'dark';
   if (state.prefs.theme === 'light'){
     const meta = document.querySelector('meta[name=theme-color]');
