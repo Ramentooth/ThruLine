@@ -1933,6 +1933,48 @@ function echoBlock(echoes){
       (r.entry.ai.summary || '') + ' [themes: ' + (r.entry.ai.themes || []).join(', ') + ']').join('\n') + '\n\n';
 }
 
+/* The Go deeper thread, trimmed to fit. Newest turns win — a conversation ends
+   where it got to, and the tail is the part still live. Claude's turns are cut
+   harder than the writer's: they are commentary on the day, the writer's turns
+   are evidence about it. */
+const MUSE_CTX_CHARS = 3000;   // the whole block
+const MUSE_MINE      = 900;    // one of their turns
+const MUSE_THEIRS    = 500;    // one of Claude's
+
+function clipTurn(text, n){
+  const s = String(text).trim().replace(/\s+/g, ' ');
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n);
+  const sp = cut.lastIndexOf(' ');
+  return (sp > n * 0.6 ? cut.slice(0, sp) : cut) + '\u2026';
+}
+
+function museBlock(e){
+  const turns = (e.muse || []).filter(m => m && m.content);
+  if (!turns.length) return '';
+
+  const lines = [];
+  let budget = MUSE_CTX_CHARS;
+  for (let i = turns.length - 1; i >= 0; i--){
+    const mine = turns[i].role === 'user';
+    const line = (mine ? 'Them: ' : 'You: ') +
+                 clipTurn(turns[i].content, mine ? MUSE_MINE : MUSE_THEIRS);
+    if (line.length > budget) break;
+    budget -= line.length;
+    lines.unshift(line);
+  }
+  if (!lines.length) return '';
+
+  const dropped = turns.length - lines.length;
+  return '\n\n---\n\nTHE CONVERSATION THE TWO OF YOU HAD ON THIS ENTRY (Go deeper, on this page)\n' +
+    'The entry above is what you are reading; this is background to it. The "You:" lines are your ' +
+    'own earlier turns \u2014 your guesses at the time, not things they said and not settled facts ' +
+    'about the day. Weigh what they said. Where you asked something and they answered, the answer ' +
+    'is theirs and the question is yours.' +
+    (dropped ? '\n[' + dropped + ' earlier turn' + (dropped === 1 ? '' : 's') + ' trimmed]' : '') +
+    '\n\n' + lines.join('\n\n');
+}
+
 function entryContextMessage(e){
   const recent = state.entries
     .filter(x => x.id !== e.id && x.ai && x.text.trim())
@@ -1961,7 +2003,8 @@ function entryContextMessage(e){
     'Today is ' + longDate(e.date) + '.' +
     (e.mood ? ' They rated the day ' + e.mood + '/10 for mood' + (e.energy ? ' and ' + e.energy + '/10 for energy' : '') + '.' : '') +
     habLine +
-    '\n\nHere is the entry:\n\n' + e.text;
+    '\n\nHere is the entry:\n\n' + e.text +
+    museBlock(e);
 }
 
 /* The reflection is a summary now, not a letter: one structured pass naming
