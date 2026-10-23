@@ -80,7 +80,7 @@ ever served from this same origin, "Read from this browser" reads its
 
 | | What it does | Where it lives |
 |---|---|---|
-| **Reflect** | one pass over the day: a short summary, what stands out, any distortion it names, tags, a mood read. No conversation. | the day's entry |
+| **Reflect** | two calls: a cheap one searches the journal, an expensive one reads the day. Returns a summary, what stands out, what the conversation got to, what it connects to, tags, a mood read. No conversation of its own. | the day's entry |
 | **✦ Go deeper** | the back-and-forth. Opens under the entry and keeps going as long as you like; depth setting controls length and effort. | the day's entry |
 | **Chat** | its own tab, not tied to a day. Knows your profile, lessons, recent entries, and pulls up an older day or an earlier chat when what you say matches one. | `state.chats` |
 
@@ -100,12 +100,38 @@ days disabled, ‹ › to change month. Escape or the backdrop closes it.
 
 ## Memory
 
-Three layers reach a reflection, in ascending durability:
+Reflect is two calls, and the cheap one goes first.
+
+**The search call** (`searchSources`, Haiku by default) gets the whole journal
+as raw text and hands back at most six of your own paragraphs — quoted, dated,
+one line each on why it pulled them. It is looking for connections of *meaning*:
+the landlord you avoided emailing in July and the supplier you are not calling
+today share no vocabulary, so `findEchoes` can never put them together, and a
+model reading both does it instantly. Every quote is checked against the entry
+it claims before it goes anywhere (`verifyPassages`, whitespace-insensitive);
+anything that isn't word for word is thrown out and counted.
+
+**The reflection call** then reasons over that instead of scanning for it.
+
+What comes back is stored on the entry as `e.sources` and shown under "What it
+read first" below the reflection, so you can check a reflection against what it
+was actually looking at. It is scratch: no other entry's prompt reads it, and
+nothing carries it forward. The one thing that does persist is `ai.summary`, so
+the prompt tells that field to describe *this day only* — connections go in
+`connections`, which is read and then forgotten.
+
+Costs about a cent per reflection at Haiku's $0.10/MTok, even projected out to
+a five-year journal (~81K tokens). Prompt caching doesn't help: journaling is a
+once-a-day thing and the cache is cold by then. When the journal outgrows
+`SEARCH_CORPUS_CHARS` the oldest entries fall out of the search — that's the
+point to put a filter in front of it.
+
+Underneath that, three layers reach a reflection, in ascending durability:
 
 | Layer | What | Cost |
 |---|---|---|
 | **Recent** | last 12 days in full — context is mostly local | ~500 tokens |
-| **Echoes** | older entries pulled in *only* when today's language matches them (`findEchoes`, local term overlap — no embeddings), plus a one-line-per-month skeleton of everything else | ~450 tokens |
+| **Echoes** | older entries pulled in *only* when today's language matches them (`findEchoes`, local term overlap — no embeddings), plus a one-line-per-month skeleton of everything else. These arrive as Claude's summaries; the search call above is what brings back your own words | ~450 tokens |
 | **Standing** | the profile the model keeps about you, and the lessons you wrote | grows slowly |
 
 The echo layer is why a reflection in November can reach March. Sending the
@@ -174,7 +200,7 @@ Settings → AI. Three providers:
 
 | Provider | What you need | Default model |
 |---|---|---|
-| Anthropic | An API key from console.anthropic.com | `claude-opus-5` |
+| Anthropic | An API key from console.anthropic.com | `claude-opus-5-5` |
 | OpenAI | An API key | `gpt-4.1` |
 | Ollama | Ollama running locally | `qwen3:8b` |
 
@@ -238,8 +264,8 @@ also a legitimate way to run it — just export a backup now and then.
 The `<script>` is banner-commented in this order:
 
 ```
-DATA MODEL · HELPERS · AI · THINKING ANIMATION · WRITE VIEW
-MEMORY · CHAT · ANALYTICS · CHARTS · ENTRIES VIEW · PATTERNS VIEW
+DATA MODEL · HELPERS · AI · SOURCE SEARCH · THINKING ANIMATION
+WRITE VIEW · MEMORY · CHAT · ANALYTICS · CHARTS · ENTRIES VIEW · PATTERNS VIEW
 PROFILE & LESSONS · HABIT CASINO · FIREBASE SYNC · SETTINGS
 FOCUS MODE · MODAL + CALENDAR · ROUTING & INIT
 ```
@@ -248,7 +274,7 @@ Storage keys:
 
 | Key | Holds |
 |---|---|
-| `throughline.v1` | entries (text, reflections, going-deeper threads), free chats, reports, prefs — the export payload |
+| `throughline.v1` | entries (text, reflections, going-deeper threads, the passages each search pulled up), free chats, reports, prefs — the export payload |
 | `throughline.v1.before-reflections-moved` | one-time safety copy taken before reflections were folded into entry bodies |
 | `throughline.ai` | provider, key, model — never exported |
 | `throughline.habits.v1` | the reduced Habit Casino day index |

@@ -312,6 +312,15 @@ html[data-theme="light"] .scale button.on{color:#fff;}
 details.disc{border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 13px; margin-top:10px; background:var(--bg2);}
 details.disc summary{font-size:12.5px; color:var(--dim); cursor:pointer; font-weight:500;}
 details.disc p{font-size:12.5px; color:var(--dim); line-height:1.55; margin:9px 0 0;}
+/* ---- sources receipt ---- */
+.src-row{padding:11px 0; border-top:1px solid var(--line);}
+.src-row:first-of-type{border-top:0; padding-top:4px;}
+.src-row .dt{font-size:11.5px; color:var(--accent); letter-spacing:.02em;}
+.src-row .qt{font-family:var(--serif); font-size:14px; color:var(--fg2); line-height:1.6;
+  border-left:2px solid var(--line2); padding-left:11px; margin:6px 0 5px; border-radius:0;}
+.src-row .wy{font-size:12.5px; color:var(--dim); line-height:1.5;}
+.src-none{font-size:12.5px; color:var(--faint); line-height:1.55; margin:4px 0 0;}
+
 /* ============================== MODAL + CALENDAR ============================== */
 .modal-back[hidden]{display:none;}   /* author display: beats the UA's [hidden] rule */
 .modal-back{
@@ -568,7 +577,7 @@ body.zen .zen-exit:hover{opacity:1;}
     </label>
     <label class="fld" style="margin-bottom:0">
       <span>Model</span>
-      <input type="text" id="setModel" placeholder="claude-opus-5" />
+      <input type="text" id="setModel" placeholder="claude-opus-5-5" />
     </label>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn sm" id="testAI">Test connection</button>
@@ -913,9 +922,15 @@ const AI_DEFAULTS = {
   provider: 'anthropic',
   key: '',
   base: 'http://localhost:11434',
-  model: 'claude-opus-5',
+  model: 'claude-opus-5-5',
 };
-const MODEL_DEFAULTS = { anthropic: 'claude-opus-5', openai: 'gpt-4.1', ollama: 'qwen3:8b' };
+const MODEL_DEFAULTS = { anthropic: 'claude-opus-5-5', openai: 'gpt-4.1', ollama: 'qwen3:8b' };
+/* The cheap model that does the searching. It reads a lot and writes almost
+   nothing, so it wants to be fast and cheap, not clever. */
+const SEARCH_MODELS  = { anthropic: 'claude-haiku-5-5', openai: 'gpt-4.1-mini', ollama: '' };
+/* Settings saved before the bump still name the old default. Move them on;
+   leave a model the writer picked themselves alone. */
+const MODEL_RENAMES  = { 'claude-opus-5': 'claude-opus-5-5' };
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Server-side refusal fallback: journals go to dark places sometimes, and a
 // classifier declining to read one is a bad experience. If the beta header
@@ -924,8 +939,11 @@ const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 let betaBlocked = false;
 
 function loadAI(){
-  try{ return Object.assign({}, AI_DEFAULTS, JSON.parse(localStorage.getItem(AI_KEY) || '{}')); }
+  let s;
+  try{ s = Object.assign({}, AI_DEFAULTS, JSON.parse(localStorage.getItem(AI_KEY) || '{}')); }
   catch(e){ return Object.assign({}, AI_DEFAULTS); }
+  if (MODEL_RENAMES[s.model]) s.model = MODEL_RENAMES[s.model];
+  return s;
 }
 function saveAI(s){ try{ localStorage.setItem(AI_KEY, JSON.stringify(s)); }catch(e){} }
 function aiReady(){
@@ -976,7 +994,7 @@ async function callAI(opts){
 
   if (s.provider === 'anthropic'){
     const body = {
-      model: s.model || MODEL_DEFAULTS.anthropic,
+      model: opts.model || s.model || MODEL_DEFAULTS.anthropic,
       max_tokens: maxTokens,
       system: opts.system,
       messages: opts.messages,
@@ -1008,7 +1026,7 @@ async function callAI(opts){
 
   if (s.provider === 'openai'){
     const body = {
-      model: s.model || MODEL_DEFAULTS.openai,
+      model: opts.model || s.model || MODEL_DEFAULTS.openai,
       max_completion_tokens: maxTokens,
       messages: [{ role: 'system', content: opts.system }].concat(opts.messages),
     };
@@ -1028,7 +1046,7 @@ async function callAI(opts){
 
   // Ollama
   const body = {
-    model: s.model || MODEL_DEFAULTS.ollama,
+    model: opts.model || s.model || MODEL_DEFAULTS.ollama,
     stream: false,
     messages: [{ role: 'system', content: opts.system }].concat(opts.messages),
   };
@@ -1207,6 +1225,134 @@ async function conceptPass(e){
   }
 }
 
+/* ============================== SOURCE SEARCH ==============================
+   One cheap call reads the journal and hands back the writer's own paragraphs —
+   quoted, dated, and with a line on why each one is here. The expensive call
+   then reasons over that instead of scanning. Two things make this worth the
+   extra request: it finds connections that share no vocabulary, which the word
+   overlap in findEchoes can never do, and what comes back is the writer's
+   words rather than Claude's summary of them.
+
+   The result is scratch. It is stored on the entry so it can be looked at, and
+   no other entry's prompt ever reads it. */
+
+const SEARCH_CORPUS_CHARS = 600000;   // ~150k tokens; a cent or two on Haiku
+const SOURCE_N            = 6;
+const SOURCE_QUOTE_CHARS  = 900;
+
+const SOURCE_SCHEMA = {
+  type: 'object',
+  properties: {
+    passages: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { date: { type: 'string' }, quote: { type: 'string' }, why: { type: 'string' } },
+        required: ['date', 'quote', 'why'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['passages'],
+  additionalProperties: false,
+};
+
+const SOURCE_SYSTEM =
+  'You are searching one person\'s private journal for the passages that genuinely connect to the ' +
+  'entry they have just written. You are not writing to them and you are not analysing anything \u2014 ' +
+  'another model does that, and it only gets to see what you hand it.\n\n' +
+  'Look for connections of MEANING, not shared words. The same fear in different clothes. A promise ' +
+  'made and later quietly dropped. A person who keeps reappearing. Something that resolved once and ' +
+  'is back. Two entries with no words in common can be the same entry twice \u2014 those are the ones ' +
+  'worth finding, because nothing else in this app can find them.\n\n' +
+  'Return at most ' + SOURCE_N + ' passages. For each:\n' +
+  '- date: that entry\'s date, exactly as its header gives it (YYYY-MM-DD).\n' +
+  '- quote: their own words, copied VERBATIM from that entry \u2014 one to five sentences. Never ' +
+  'paraphrase, never stitch two separate parts together, never tidy their typos. A quote that is not ' +
+  'an exact substring of that entry is thrown away, so copy it character for character.\n' +
+  '- why: one sentence on what it has to do with today. Be specific \u2014 "similar themes" is useless.\n\n' +
+  'Prefer older material; the last couple of weeks are already in front of the other model. Quality ' +
+  'over count: three real connections beat six loose ones, and an empty list is the right answer when ' +
+  'today genuinely stands alone.';
+
+/* Newest-first within the budget. When the journal outgrows it the oldest
+   entries fall out, which is the point at which this wants a filter in front. */
+function searchCorpus(e){
+  const others = state.entries
+    .filter(x => x.id !== e.id && x.text.trim())
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const kept = [];
+  let chars = 0;
+  for (let i = others.length - 1; i >= 0; i--){
+    const t = others[i].text.trim();
+    if (chars + t.length > SEARCH_CORPUS_CHARS) break;
+    chars += t.length;
+    kept.unshift(others[i]);
+  }
+  return { kept: kept, chars: chars, total: others.length };
+}
+
+const squash = t => String(t).toLowerCase().replace(/\s+/g, ' ').trim();
+
+/* Keep only what they actually wrote. A quote that is not in the entry it
+   claims is dropped outright rather than quietly paraphrased into the prompt. */
+function verifyPassages(list){
+  const out = [];
+  let dropped = 0;
+  (Array.isArray(list) ? list : []).forEach(pin => {
+    const src = state.entries.find(x => x.date === String(pin && pin.date).trim());
+    const q = squash(pin && pin.quote);
+    if (!src || !q){ dropped++; return; }
+    const i = squash(src.text).indexOf(q);
+    if (i === -1){ dropped++; return; }
+    out.push({
+      date:  src.date,
+      quote: String(pin.quote).trim().slice(0, SOURCE_QUOTE_CHARS),
+      why:   String(pin.why || '').trim(),
+    });
+  });
+  return { passages: out.slice(0, SOURCE_N), dropped: dropped };
+}
+
+async function searchSources(e){
+  const corpus = searchCorpus(e);
+  if (corpus.kept.length < 5) return null;        // nothing to reach back into yet
+
+  const s = loadAI();
+  const body = corpus.kept.map(x => '### ' + x.date + '\n' + x.text.trim()).join('\n\n');
+  const out = await callAI({
+    model: SEARCH_MODELS[s.provider] || undefined,
+    system: SOURCE_SYSTEM,
+    messages: [{ role: 'user', content:
+      'THE JOURNAL\n\n' + body +
+      '\n\n---\n\nTHE ENTRY THEY JUST WROTE (' + e.date + ')\n\n' + e.text.trim() }],
+    schema: SOURCE_SCHEMA,
+    maxTokens: 8000,
+    effort: 'low',
+  });
+
+  const v = verifyPassages(out && out.passages);
+  return {
+    at: Date.now(),
+    model: SEARCH_MODELS[s.provider] || s.model || MODEL_DEFAULTS[s.provider],
+    passages: v.passages,
+    dropped: v.dropped,
+    searched: corpus.kept.length,
+    ofEntries: corpus.total,
+  };
+}
+
+function sourceBlock(e){
+  const src = e.sources;
+  if (!src || !src.passages || !src.passages.length) return '';
+  return '\n\n---\n\nOLDER DAYS, IN THEIR OWN WORDS\n' +
+    'A search over the whole journal pulled these out as genuinely connected to today. They are ' +
+    'the writer\'s words, copied from the entry named, not a summary of it. Use one only where it ' +
+    'earns its place, and when you do, say which day it came from.\n\n' +
+    src.passages.map(pz => pz.date + ' \u2014 ' + pz.why + '\n"' + pz.quote.replace(/\s+/g, ' ') + '"')
+       .join('\n\n');
+}
+
 const ANALYSIS_SCHEMA = {
   type: 'object',
   properties: {
@@ -1215,6 +1361,8 @@ const ANALYSIS_SCHEMA = {
     emotions:      { type: 'array', items: { type: 'string' } },
     mood_estimate: { type: 'integer' },
     observation:   { type: 'string' },
+    connections:   { type: 'string' },
+    conversation:  { type: 'string' },
     distortions: {
       type: 'array',
       items: {
@@ -1226,7 +1374,8 @@ const ANALYSIS_SCHEMA = {
     },
     questions: { type: 'array', items: { type: 'string' } },
   },
-  required: ['summary', 'themes', 'emotions', 'mood_estimate', 'observation', 'distortions', 'questions'],
+  required: ['summary', 'themes', 'emotions', 'mood_estimate', 'observation', 'connections',
+             'conversation', 'distortions', 'questions'],
   additionalProperties: false,
 };
 
@@ -1249,13 +1398,22 @@ const ANALYSIS_SYSTEM =
   'Extract structure only — a separate reply handles talking to the writer.\n\n' +
   'Return:\n' +
   '- summary: one or two sentences, second person ("You spent most of the day…"), used as the preview ' +
-  'line in a list of entries. Concrete, no platitudes.\n' +
+  'line in a list of entries. Concrete, no platitudes. THIS DAY ONLY — it is the one field that ' +
+  'becomes permanent memory and gets read back months from now, so keep older days and anything ' +
+  'said in conversation out of it. Connections belong in `connections`.\n' +
   '- themes: 2–5 short lowercase tags naming what this entry is ABOUT (e.g. "work pressure", ' +
   '"family", "sleep", "avoidance"). Reuse ordinary words so they group across months.\n' +
   '- emotions: 1–4 emotions actually present in the text, lowercase.\n' +
   '- mood_estimate: 1–10 for how the day felt, judged from the writing alone.\n' +
   '- observation: one sentence naming a pattern, tension, or contradiction in this entry — the ' +
   'thing a friend who listened closely would say back. Skip the obvious.\n' +
+  '- connections: one or two sentences, only if older days were handed to you under OLDER DAYS, IN ' +
+  'THEIR OWN WORDS and one genuinely connects. Name the date and what it has to do with today. ' +
+  'Empty string when nothing real is there — a forced connection is worse than none.\n' +
+  '- conversation: one or two sentences, only if a Go deeper conversation is included above. Say ' +
+  'what the two of them actually worked out in it, in second person, as something that got ' +
+  'somewhere ("You landed on…", "You named the thing you had been circling…"). Not a transcript ' +
+  'and not a list of topics. Empty string when there was no conversation.\n' +
   '- distortions: at most 2, only when genuinely present, drawn from CBT (catastrophizing, ' +
   'mind reading, all-or-nothing, should statements, personalization, discounting the positive, ' +
   'overgeneralization). Quote the writer\'s own words verbatim in `quote`, and make `reframe` ' +
@@ -1745,7 +1903,9 @@ function renderAIOut(e){
 
   let html = '<div class="card ai-panel"><h3>✦ Reflection</h3>';
   if (a.summary)     html += '<div class="ai-block"><div class="v">' + esc(a.summary) + '</div></div>';
-  if (a.observation) html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
+  if (a.observation)   html += '<div class="ai-block"><div class="k">What stands out</div><div class="v">' + esc(a.observation) + '</div></div>';
+  if (a.conversation)  html += '<div class="ai-block"><div class="k">From going deeper</div><div class="v">' + esc(a.conversation) + '</div></div>';
+  if (a.connections)   html += '<div class="ai-block"><div class="k">What this connects to</div><div class="v">' + esc(a.connections) + '</div></div>';
 
   if (a.distortions && a.distortions.length){
     html += '<div class="ai-block"><div class="k">Worth a second look</div>';
@@ -1763,6 +1923,8 @@ function renderAIOut(e){
     .join('');
   if (tagLine) html += '<div class="ai-block">' + tagLine + '</div>';
 
+  html += sourcesHTML(e);
+
   html += '<div class="btn-row" style="margin-top:14px">' +
     '<button class="btn sm primary" id="goDeepBtn">✦ Go deeper</button>' +
     '<button class="btn sm ghost" id="toLesson">Save a lesson</button>' +
@@ -1778,6 +1940,37 @@ function renderAIOut(e){
     const t = prompt('In your own words \u2014 what did you work out here that you do not want to relearn?');
     if (t && t.trim()) addLesson(t);
   };
+}
+
+/* What the search actually pulled up, kept so the reflection can be checked
+   against its own sources rather than taken on faith. */
+function sourcesHTML(e){
+  const src = e && e.sources;
+  if (!src) return '';
+
+  let inner;
+  if (src.failed){
+    inner = '<p class="src-none">The search did not run this time \u2014 ' + esc(src.failed) + '</p>';
+  }else if (!src.passages.length){
+    inner = '<p class="src-none">Nothing older came back. Either today stands on its own, or the ' +
+            'journal is not deep enough yet for it to find anything.</p>';
+  }else{
+    inner = src.passages.map(pz =>
+      '<div class="src-row"><div class="dt">' + esc(longDate(pz.date)) + '</div>' +
+      '<div class="qt">' + esc(pz.quote) + '</div>' +
+      (pz.why ? '<div class="wy">' + esc(pz.why) + '</div>' : '') + '</div>').join('');
+    inner += '<p class="src-none" style="margin-top:10px">Searched ' + src.searched + ' of ' +
+      src.ofEntries + ' earlier ' + (src.ofEntries === 1 ? 'entry' : 'entries') +
+      (src.dropped ? ' \u00b7 ' + src.dropped + ' passage' + (src.dropped === 1 ? '' : 's') +
+        ' discarded for not being word for word' : '') +
+      ' \u00b7 ' + esc(src.model || '') + '</p>';
+  }
+
+  const count = src.passages ? src.passages.length : 0;
+  return '<details class="disc" style="margin-top:12px"><summary>' +
+    (count ? 'What it read first \u2014 ' + count + ' passage' + (count === 1 ? '' : 's')
+           : 'What it read first') +
+    '</summary>' + inner + '</details>';
 }
 
 /* ============================== MEMORY ==============================
@@ -2004,7 +2197,8 @@ function entryContextMessage(e){
     (e.mood ? ' They rated the day ' + e.mood + '/10 for mood' + (e.energy ? ' and ' + e.energy + '/10 for energy' : '') + '.' : '') +
     habLine +
     '\n\nHere is the entry:\n\n' + e.text +
-    museBlock(e);
+    museBlock(e) +
+    sourceBlock(e);
 }
 
 /* The reflection is a summary now, not a letter: one structured pass naming
@@ -2035,6 +2229,16 @@ async function reflect(force){
     runThinking(cp.concepts, Array.from(new Set(echoWords)).slice(0, 5), '#aiOut');
   }
 
+  // The search call. Its result is scratch for this reflection and a receipt
+  // for the writer — nothing else reads it. A failure here must not take the
+  // reflection down with it.
+  try{
+    const found = await searchSources(e);
+    if (found) e.sources = found;
+  }catch(err){
+    e.sources = { at: Date.now(), failed: (err && err.message) || 'search failed', passages: [] };
+  }
+
   try{
     const meta = await callAI({
       system: ANALYSIS_SYSTEM + personaLine(),
@@ -2054,6 +2258,8 @@ async function reflect(force){
       emotions: (meta.emotions || []).map(t => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 5),
       moodEstimate: clamp(Number(meta.mood_estimate) || 5, 1, 10),
       observation: meta.observation || '',
+      connections:  meta.connections  || '',
+      conversation: meta.conversation || '',
       distortions: Array.isArray(meta.distortions) ? meta.distortions.slice(0, 3) : [],
       questions:   Array.isArray(meta.questions)   ? meta.questions.slice(0, 4)   : [],
       thread: [],
