@@ -241,6 +241,27 @@ identifiers by design; the rules and the authorized-domain list are what protect
 the data. The paste box under "Use a different Firebase project" overrides the
 built-in config on one device only.
 
+The whole journal goes up as one JSON string in one Firestore document, and
+**Firestore caps a document at 1 MiB** — so what gets written matters. Two
+things are kept out by `entryForStorage()`:
+
+- `__echoes` — never persisted anywhere. `findEchoes` returns `[{entry, score}]`,
+  whole entry objects by reference, and `reflect()` parked that on the entry, so
+  every entry ever reflected on stored a copy of eight others — each of which
+  stored its own eight. Measured at 180 entries with a single level of nesting:
+  810 KB against 218 KB without it. Real data nests deeper. Old journals are
+  cleaned on load and written back once, with no action needed.
+- `sources` — kept locally (it is the receipt under the reflection) but left out
+  of the cloud copy: its quotes are copied from entries already in the same
+  document, and Redo regenerates it. Safe to omit because `mergeRemote` does
+  `Object.assign(local, remote)`, so a key the remote lacks leaves the local one
+  alone.
+
+The sync status line shows the payload size, and a push over `FB_DOC_MAX` stops
+with a readable message instead of the SDK's raw limit error. If it ever does
+hit the ceiling, the fix is a document per entry (`throughline/{uid}/entries/{id}`)
+rather than more trimming.
+
 Deploy hosting and rules with:
 
 ```bash

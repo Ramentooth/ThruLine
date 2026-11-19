@@ -777,7 +777,12 @@ function load(){
       if (!Array.isArray(state.chats))   state.chats = [];
       state.profile = Object.assign(defaultState().profile, s.profile || {});
       if (!Array.isArray(state.profile.history)) state.profile.history = [];
+      // Journals written before this was fixed carry __echoes on every entry
+      // that was ever reflected on. normalizeEntry strips it; write the state
+      // back once so the smaller copy is what gets stored and synced.
+      const hadEchoes = state.entries.some(e => e.__echoes);
       state.entries.forEach(normalizeEntry);
+      if (hadEchoes) setTimeout(save, 0);
     }
   }catch(e){ console.warn('load failed, starting fresh', e); }
   try{
@@ -795,13 +800,46 @@ function normalizeEntry(e){
   e.tags    = Array.isArray(e.tags) ? e.tags : [];
   e.createdAt = e.createdAt || Date.now();
   e.updatedAt = e.updatedAt || e.createdAt;
+  delete e.__echoes;        // derived; see entryForStorage
   return e;
+}
+
+/* What is allowed onto disk.
+
+   `__echoes` is the reason a journal of a few hundred entries could blow past
+   Firestore's 1 MiB document limit. findEchoes returns [{entry, score}] —
+   whole entry objects by reference — and reflect() parks that on e.__echoes,
+   so every entry ever reflected on carried a full copy of eight other entries,
+   each of which carried its own eight. It is rebuilt on every reflection and
+   nothing reads it from storage. It never belonged here.
+
+   `sources` is kept locally (it is the receipt under the reflection) but left
+   out of the cloud payload: the quotes in it are copied from entries already
+   in the same document, and Redo regenerates it. Dropping a key this way is
+   safe for merging — mergeRemote does Object.assign(local, remote), so a key
+   the remote simply lacks leaves the local one alone. */
+function entryForStorage(e, lean){
+  const out = {};
+  Object.keys(e).forEach(k => {
+    if (k === '__echoes') return;
+    if (lean && k === 'sources') return;
+    out[k] = e[k];
+  });
+  return out;
+}
+
+function bytesOf(str){
+  try{ return new Blob([str]).size; }catch(err){ return str.length; }
+}
+function kb(bytes){
+  return bytes > 999000 ? (bytes / 1048576).toFixed(2) + ' MB' : Math.round(bytes / 1024) + ' KB';
 }
 
 let saveTimer = null;
 function save(){
   try{
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(
+      Object.assign({}, state, { entries: state.entries.map(e => entryForStorage(e, false)) })));
     flagSaved('saved');
     scheduleCloudPush();
   }catch(err){
@@ -3766,16 +3804,32 @@ function mergeRemote(remote){
   }
 }
 
+/* Firestore refuses a document over 1 MiB. Catch it on this side, where the
+   message can say which part is big and what to do, instead of surfacing the
+   raw limit from the SDK. */
+const FB_DOC_MAX = 1000000;
+
 async function cloudPush(){
   if (!fb) return;
   try{
+    const payload = JSON.stringify({
+      v: state.v,
+      entries: state.entries.map(e => entryForStorage(e, true)),
+      reports: state.reports, profile: state.profile, lessons: state.lessons,
+    });
+    const size = bytesOf(payload);
+    if (size > FB_DOC_MAX){
+      fbStatus('Too big to sync \u2014 ' + kb(size) + ' of a 1 MB limit. Your writing is safe on ' +
+               'this device; Settings \u2192 Export saves a copy.', true);
+      return;
+    }
     await fb.mod.setDoc(fbDoc(), {
-      payload: JSON.stringify({ v: state.v, entries: state.entries, reports: state.reports,
-                                profile: state.profile, lessons: state.lessons }),
+      payload: payload,
       updatedAt: Date.now(),
       device: navigator.userAgent.slice(0, 80),
     });
-    fbStatus('Synced ' + new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }));
+    fbStatus('Synced ' + new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }) +
+             ' \u00b7 ' + kb(size));
   }catch(e){
     fbStatus('Sync failed: ' + (e.message || e), true);
   }
