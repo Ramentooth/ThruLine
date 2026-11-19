@@ -3761,17 +3761,85 @@ async function fbConnect(cfg, interactive){
   return fb;
 }
 
-function fbDoc(){ return fb.mod.doc(fb.db, 'throughline', fb.uid); }
+
+/* ---------------------------------------------------------------------------
+   One document per entry: throughline/{uid}/entries/{entryId}.
+
+   The journal used to go up as a single JSON string in a single document, and
+   Firestore caps a document at 1 MiB — a ceiling a journal walks into and then
+   never leaves. Per entry there is no ceiling worth worrying about: only a
+   single entry long enough to fill a megabyte on its own would trip it, and
+   that is caught by name below.
+
+   It is also far less writing. A push used to re-upload the whole journal
+   every four seconds of typing; now it writes the entries whose updatedAt has
+   moved since the last successful commit, which while writing is one.
+
+   The root document keeps what stays small — reports, profile, lessons — and
+   is rewritten only after every entry batch has committed, so the old payload
+   survives until its replacement is safely stored.
+   --------------------------------------------------------------------------- */
+
+const FB_BATCH      = 400;                    // Firestore allows 500 per batch
+const FB_PUSHED_KEY = 'throughline.fbpushed'; // {entryId: updatedAt} per device
+
+function fbRoot(){ return fb.mod.doc(fb.db, 'throughline', fb.uid); }
+function fbEntryCol(){ return fb.mod.collection(fb.db, 'throughline', fb.uid, 'entries'); }
+function fbEntryDoc(id){ return fb.mod.doc(fb.db, 'throughline', fb.uid, 'entries', id); }
+
+function loadPushed(){
+  try{ return JSON.parse(localStorage.getItem(FB_PUSHED_KEY) || '{}'); }catch(err){ return {}; }
+}
+function savePushed(m){
+  try{ localStorage.setItem(FB_PUSHED_KEY, JSON.stringify(m)); }catch(err){}
+}
 
 async function cloudPull(){
   if (!fb) return;
-  const snap = await fb.mod.getDoc(fbDoc());
-  if (!snap.exists()) return;
-  const data = snap.data();
-  if (!data || !data.payload) return;
-  let remote;
-  try{ remote = JSON.parse(data.payload); }catch(e){ return; }
+
+  const byId = new Map();
+  const take = e => {
+    if (!e || !e.id) return;
+    const had = byId.get(e.id);
+    if (!had || (e.updatedAt || 0) > (had.updatedAt || 0)) byId.set(e.id, e);
+  };
+
+  // The root document: everything that is not an entry, plus — on a journal
+  // that has not been migrated yet — the entries themselves.
+  let rest = null;
+  const rootSnap = await fb.mod.getDoc(fbRoot());
+  if (rootSnap.exists()){
+    const data = rootSnap.data();
+    if (data && data.payload){
+      try{
+        rest = JSON.parse(data.payload);
+        (rest.entries || []).forEach(take);
+      }catch(err){ rest = null; }
+    }
+  }
+
+  const col = await fb.mod.getDocs(fbEntryCol());
+  col.forEach(d => {
+    const v = d.data();
+    if (!v || !v.payload) return;
+    try{ take(JSON.parse(v.payload)); }catch(err){}
+  });
+
+  const remote = Object.assign({}, rest || {}, { entries: Array.from(byId.values()) });
+  const before = new Map(state.entries.map(e => [e.id, e.updatedAt || 0]));
   mergeRemote(remote);
+
+  // Anything the remote won outright is already stored; do not push it back.
+  const pushed = loadPushed();
+  let changed = false;
+  state.entries.forEach(e => {
+    const r = byId.get(e.id);
+    if (!r) return;
+    if ((e.updatedAt || 0) === (r.updatedAt || 0) && (before.get(e.id) || 0) <= (r.updatedAt || 0)){
+      if (pushed[e.id] !== (e.updatedAt || 0)){ pushed[e.id] = e.updatedAt || 0; changed = true; }
+    }
+  });
+  if (changed) savePushed(pushed);
 }
 
 /* Last-write-wins per entry, never per whole document — writing on your phone
@@ -3783,7 +3851,7 @@ function mergeRemote(remote){
   remote.entries.forEach(r => {
     normalizeEntry(r);
     const m = mine.get(r.id);
-    if (!m){ state.entries.push(r); added++; }
+    if (!m){ state.entries.push(r); mine.set(r.id, r); added++; }
     else if ((r.updatedAt || 0) > (m.updatedAt || 0)){ Object.assign(m, r); updated++; }
   });
   const reportIds = new Set(state.reports.map(r => r.id));
@@ -3804,36 +3872,75 @@ function mergeRemote(remote){
   }
 }
 
-/* Firestore refuses a document over 1 MiB. Catch it on this side, where the
-   message can say which part is big and what to do, instead of surfacing the
-   raw limit from the SDK. */
+/* Firestore refuses a document over 1 MiB. With one entry per document that
+   needs a single entry of a million characters, but say so by name if it ever
+   happens rather than surfacing the SDK's raw limit error. */
 const FB_DOC_MAX = 1000000;
+let fbPushing = false;
 
 async function cloudPush(){
-  if (!fb) return;
+  if (!fb || fbPushing) return;
+  fbPushing = true;
   try{
-    const payload = JSON.stringify({
-      v: state.v,
-      entries: state.entries.map(e => entryForStorage(e, true)),
-      reports: state.reports, profile: state.profile, lessons: state.lessons,
+    const pushed = loadPushed();
+    const live   = new Map(state.entries.map(e => [e.id, e]));
+    const writes = [];
+
+    live.forEach((e, id) => {
+      if (pushed[id] !== (e.updatedAt || 0)) writes.push({ id: id, entry: e });
     });
-    const size = bytesOf(payload);
-    if (size > FB_DOC_MAX){
-      fbStatus('Too big to sync \u2014 ' + kb(size) + ' of a 1 MB limit. Your writing is safe on ' +
-               'this device; Settings \u2192 Export saves a copy.', true);
-      return;
+    Object.keys(pushed).forEach(id => { if (!live.has(id)) writes.push({ id: id, gone: true }); });
+
+    let bytes = 0;
+    for (const w of writes){
+      if (w.gone) continue;
+      w.payload = JSON.stringify(entryForStorage(w.entry, true));
+      const size = bytesOf(w.payload);
+      if (size > FB_DOC_MAX){
+        fbStatus('The entry for ' + longDate(w.entry.date) + ' is ' + kb(size) + ' on its own, over the ' +
+                 '1 MB limit for one document. Everything else synced; that day stays on this device.', true);
+        w.skip = true;
+        continue;
+      }
+      bytes += size;
     }
-    await fb.mod.setDoc(fbDoc(), {
-      payload: payload,
+
+    const queue = writes.filter(w => !w.skip);
+    for (let i = 0; i < queue.length; i += FB_BATCH){
+      const chunk = queue.slice(i, i + FB_BATCH);
+      const batch = fb.mod.writeBatch(fb.db);
+      chunk.forEach(w => {
+        if (w.gone) batch.delete(fbEntryDoc(w.id));
+        else batch.set(fbEntryDoc(w.id), { payload: w.payload, updatedAt: w.entry.updatedAt || 0 });
+      });
+      await batch.commit();
+      // Record after each commit, so an interrupted push resumes where it got to.
+      chunk.forEach(w => { if (w.gone) delete pushed[w.id]; else pushed[w.id] = w.entry.updatedAt || 0; });
+      savePushed(pushed);
+    }
+
+    // Only once every entry is safely in its own document does the root lose
+    // the copy it used to hold.
+    await fb.mod.setDoc(fbRoot(), {
+      payload: JSON.stringify({ v: state.v, reports: state.reports,
+                                profile: state.profile, lessons: state.lessons }),
+      entriesInSubcollection: true,
       updatedAt: Date.now(),
       device: navigator.userAgent.slice(0, 80),
     });
-    fbStatus('Synced ' + new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }) +
-             ' \u00b7 ' + kb(size));
+
+    const at = new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+    fbStatus(queue.length
+      ? 'Synced ' + at + ' \u00b7 ' + queue.length + ' ' + (queue.length === 1 ? 'entry' : 'entries') +
+        ' \u00b7 ' + kb(bytes)
+      : 'Synced ' + at + ' \u00b7 nothing had changed');
   }catch(e){
     fbStatus('Sync failed: ' + (e.message || e), true);
+  }finally{
+    fbPushing = false;
   }
 }
+
 function scheduleCloudPush(){
   if (!fb) return;
   clearTimeout(pushTimer);

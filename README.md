@@ -241,9 +241,29 @@ identifiers by design; the rules and the authorized-domain list are what protect
 the data. The paste box under "Use a different Firebase project" overrides the
 built-in config on one device only.
 
-The whole journal goes up as one JSON string in one Firestore document, and
-**Firestore caps a document at 1 MiB** — so what gets written matters. Two
-things are kept out by `entryForStorage()`:
+**The journal syncs as one document per entry**: `throughline/{uid}/entries/{id}`,
+with the root document keeping only what stays small (reports, profile,
+lessons). It used to be a single JSON string in a single document, and
+Firestore caps a document at 1 MiB — a ceiling a journal walks into and then
+never leaves. Per entry there is no practical ceiling; only one entry long
+enough to fill a megabyte by itself would trip it, and `cloudPush` names that
+day and syncs everything else.
+
+It is also much less writing. A push used to re-upload the whole journal every
+four seconds of typing. Now it writes only the entries whose `updatedAt` has
+moved since the last successful commit — while you type, that is one — tracked
+per device in `throughline.fbpushed`. Writes go in batches of 400 (Firestore
+allows 500), and the map is recorded after *each* commit, so an interrupted
+push resumes instead of restarting.
+
+Migration needs nothing: the first push after upgrading writes every entry to
+the subcollection, and only once all batches have committed is the root
+document rewritten without them. `cloudPull` reads both places and dedupes by
+id, newest `updatedAt` winning, so a journal still in the old shape comes back
+intact. A local delete removes that entry's document; a delete made on another
+device still does not propagate, same as before.
+
+What gets written is filtered by `entryForStorage()`:
 
 - `__echoes` — never persisted anywhere. `findEchoes` returns `[{entry, score}]`,
   whole entry objects by reference, and `reflect()` parked that on the entry, so
@@ -257,10 +277,12 @@ things are kept out by `entryForStorage()`:
   `Object.assign(local, remote)`, so a key the remote lacks leaves the local one
   alone.
 
-The sync status line shows the payload size, and a push over `FB_DOC_MAX` stops
-with a readable message instead of the SDK's raw limit error. If it ever does
-hit the ceiling, the fix is a document per entry (`throughline/{uid}/entries/{id}`)
-rather than more trimming.
+The sync status line shows how many entries moved and how much that was.
+
+`firestore.rules` grants the owner the root document *and* `entries/{entryId}`
+beneath it; deploy rules (`firebase deploy --only firestore:rules`) before
+shipping a hosting change that touches sync, or the new code writes somewhere
+the rules still deny.
 
 Deploy hosting and rules with:
 
